@@ -12,3 +12,7 @@ function check_gl_logs(context::String)
         end
     end
 end
+
+"Asserts for this specific project: `@bpworld_assert`, `@bpworld_debug`."
+@make_toggleable_asserts bpworld_
+bpworld_asserts_enabled() = false

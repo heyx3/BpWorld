@@ -1,13 +1,16 @@
 module BpWorld
 
+using Setfield, Base.Threads
 using GLFW, ModernGL, CImGui,
-      ImageIO, FileIO, ColorTypes, FixedPointNumbers
+      ImageIO, FileIO, ColorTypes, FixedPointNumbers, ImageTransformations
 using Bplus,
       Bplus.Utilities, Bplus.Math, Bplus.GL,
       Bplus.Helpers, Bplus.SceneTree, Bplus.Input
 
 
 include("utils.jl")
+include("voxel_mesher.jl")
+
 include("assets.jl")
 include("scene.jl")
 include("post_process.jl")
@@ -26,17 +29,39 @@ function main()
         window::GLFW.Window = context.window
 
         assets::Assets = Assets()
-        scene::Scene = Scene(assets)
-        view::PostProcess = PostProcess()
+        scene::Scene = Scene(window, assets)
+        view::PostProcess = PostProcess(window, assets, scene)
+
+        bp_resources::CResources = get_resources()
 
         last_time_ns = time_ns()
         delta_seconds::Float32 = zero(Float32)
+        is_quit_confirming::Bool = false
 
         while !GLFW.WindowShouldClose(window)
             check_gl_logs("Top of loop")
             window_size::v2i = get_window_size(context)
 
-            #TODO: Stuff.
+            # Update/render the scene.
+            update(scene, delta_seconds, window)
+            render(scene, assets)
+
+            #TODO: render post-processing.
+
+            # Handle quitting logic.
+            if is_quit_confirming
+                draw_scale = v3f(assets.tex_quit_confirmation.size.xy / get_window_size(),
+                                 1)
+                resource_blit(bp_resources, assets.tex_quit_confirmation,
+                              quad_transform=m_scale(draw_scale))
+                if button_value(scene.inputs.quit_confirm)
+                    break
+                elseif button_value(scene.inputs.quit)
+                    is_quit_confirming = false
+                end
+            elseif button_value(scene.inputs.quit)
+                is_quit_confirming = true
+            end
 
             # Finish the frame.
             GLFW.SwapBuffers(window)
