@@ -1,4 +1,25 @@
-@bp_axis signed MouseWheel begin
+#####################
+#   Custom Inputs   #
+#####################
+
+#TODO: Add these to B+ proper
+
+@bp_axis raw MouseMovement begin
+    axis::Int # 1=X, 2=Y
+    last_pos::Float32 = zero(Float32)
+    current_pos::Float32 = zero(Float32)
+    RAW(b, wnd) = (b.current_pos - b.last_pos)
+    UPDATE(b, wnd) = let pos = GLFW.GetCursorPos(wnd)
+        b.last_pos = b.current_pos
+        b.current_pos = getproperty(pos, (:x, :y)[b.axis])
+    end
+end
+
+function mouse_wheel_changed(axis_mouseWheel, window::GLFW.Window,
+                             delta_x::Float64, delta_y::Float64)
+    axis_mouseWheel.current_raw -= @f32(delta_y)
+end
+@bp_axis raw MouseWheel begin
     #TODO: Choose which wheel axis
     MouseWheel(window::GLFW.Window) = begin
         me = MouseWheel()
@@ -8,21 +29,29 @@
     RAW(b) = b.current_raw # Separate callback will update the value
 end
 #TODO: Add a centralized place in B+ to track current mouse wheel value (e.x. global dict of Context to current wheel pos)
-function mouse_wheel_changed(controls::Axis_MouseWheel, window::GLFW.Window,
-                             delta_x::Float64, delta_y::Float64)
-    controls.current_raw += @f32(delta_y)
-end
+
+
+####################
+#   Scene Inputs   #
+####################
 
 Base.@kwdef mutable struct SceneInputs
-    cam_forward::AbstractAxis = Axis_Key2(GLFW.KEY_S, GLFW.KEY_W)
-    cam_rightward::AbstractAxis = Axis_Key2(GLFW.KEY_A, GLFW.KEY_D)
-    cam_upward::AbstractAxis = Axis_Key2(GLFW.KEY_Q, GLFW.KEY_E)
+    cam_pitch::AbstractAxis = Axis_MouseMovement(2, scale=-0.05)
+    cam_yaw::AbstractAxis = Axis_MouseMovement(1, scale=0.05)
+    cam_forward::AbstractAxis = Axis_Key2(GLFW.KEY_W, GLFW.KEY_S)
+    cam_rightward::AbstractAxis = Axis_Key2(GLFW.KEY_D, GLFW.KEY_A)
+    cam_upward::AbstractAxis = Axis_Key2(GLFW.KEY_E, GLFW.KEY_Q)
     cam_sprint::AbstractButton = Button_Key(GLFW.KEY_LEFT_SHIFT)
     cam_speed_change::AbstractAxis # Set in the constructor to the mouse wheel
     quit::AbstractButton = Button_Key(GLFW.KEY_ESCAPE, mode=ButtonModes.just_pressed)
     quit_confirm::AbstractButton = Button_Key(GLFW.KEY_ENTER, mode=ButtonModes.just_pressed)
 end
 SceneInputs(window::GLFW.Window; kw...) = SceneInputs(cam_speed_change=Axis_MouseWheel(window), kw...)
+
+
+#############
+#   Scene   #
+#############
 
 mutable struct Scene
     mesh_voxel_vertices::Buffer
@@ -46,7 +75,7 @@ end
 
 function Scene(window::GLFW.Window, assets::Assets)
     # Generate some voxel data.
-    voxel_size = v3i(Val(64))
+    voxel_size = v3i(Val(16))
     voxels = VoxelGrid(undef, voxel_size.data)
     function voxel_func(pos::v3i)::Bool
         posf = (v3f(pos) + @f32(0.5)) / v3f(voxel_size - 1)
@@ -62,20 +91,26 @@ function Scene(window::GLFW.Window, assets::Assets)
 
     # Set up the mesh for that voxel.
     (voxel_verts, voxel_inds) = calculate_mesh(voxels)
+    check_gl_logs("Before setting up buffers")
     mesh_voxel_vertices = Buffer(false, voxel_verts)
+    check_gl_logs("Making vertex buffer")
     mesh_voxel_indices = Buffer(false, voxel_inds)
-    mesh_voxels = Mesh(PrimitiveTypes.triangle,
-                       [ VertexDataSource(mesh_voxel_vertices, sizeof(voxels[1])) ],
-                       voxel_vertex_layout(1),
-                       (mesh_voxel_indices, typeof(voxel_inds[1])))
-    voxel_transform = m4_world(zero(v3f), fquat(), v3f(Val(1000)))
+    check_gl_logs("Making index buffer")
+    mesh_voxels = Mesh(
+        PrimitiveTypes.triangle,
+        [ VertexDataSource(mesh_voxel_vertices, sizeof(VoxelVertex)) ],
+        voxel_vertex_layout(1)
+        #,   (mesh_voxel_indices, typeof(voxel_inds[1]))
+    )
+    check_gl_logs("Making Mesh")
+    voxel_transform = m4_world(zero(v3f), fquat(), v3f(Val(100)))
 
     window_size::v2i = get_window_size()
     return Scene(
         mesh_voxel_vertices, mesh_voxel_indices, mesh_voxels, voxel_transform,
         Cam3D{Float32}(
-            v3f(-100, 500, -100),
-            vnorm(v3f(1, 1, 0.3)),
+            v3f(-10, -10, 50),
+            vnorm(v3f(1, 1, -0.8)),
             get_up_vector(),
             Box_minmax(@f32(0.05), @f32(10000)),
             @f32(100),
@@ -90,6 +125,10 @@ function Scene(window::GLFW.Window, assets::Assets)
     )
 end
 
+
+#############
+#   Logic   #
+#############
 
 
 "Updates the scene."
@@ -107,26 +146,41 @@ function update(scene::Scene, delta_seconds::Float32, window::GLFW.Window)
     end
 
     # Update the camera.
-    # cam_input = Cam3D_Input(
-    #     true,
-
-    # )
+    cam_input = Cam3D_Input(
+        true,
+        axis_value(scene.inputs.cam_yaw),
+        axis_value(scene.inputs.cam_pitch),
+        button_value(scene.inputs.cam_sprint),
+        axis_value(scene.inputs.cam_forward),
+        axis_value(scene.inputs.cam_rightward),
+        axis_value(scene.inputs.cam_upward),
+        axis_value(scene.inputs.cam_speed_change)
+    )
+    (scene.cam, scene.cam_settings) = cam_update(scene.cam, scene.cam_settings, cam_input, delta_seconds)
 end
 
 "Renders the scene."
 function render(scene::Scene, assets::Assets)
     context::Context = get_context()
 
+    view_mat = cam_view_mat(scene.cam)
+    proj_mat = cam_projection_mat(scene.cam)
+    viewproj_mat = m_combine(view_mat, proj_mat)
+
     target_activate(nothing)
-    set_viewport(zero(v2i), get_window_size())
+    set_viewport(one(v2i), get_window_size())
     set_scissor(nothing)
-    set_culling(context, FaceCullModes.Off)
-    set_depth_writes(context, true)
-    set_depth_test(context, ValueTests.LessThan)
-    set_blending(context, make_blend_opaque(BlendStateRGBA))
 
     render_clear(context, Bplus.GL.Ptr_Target(),
                  vRGBAf(1, 0, 1, 0))
     render_clear(context, Bplus.GL.Ptr_Target(),
                  @f32 1.0)
+
+    # Draw the voxels.
+    prepare_program_voxel(assets, scene.voxel_transform, viewproj_mat,
+                          assets.tex_tile,
+                          scene.cam.pos)
+    view_activate(get_view(assets.tex_tile))
+    render_mesh(scene.mesh_voxels, assets.prog_voxel)
+    view_deactivate(get_view(assets.tex_tile))
 end

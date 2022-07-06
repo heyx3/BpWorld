@@ -7,11 +7,11 @@
 //  ^^ Tells the Julia project to cut off everything before it
 
 //This vertex sits at the min corner of some voxel.
-in ivec3 vIn_voxelIdx;
+layout (location=0) in ivec3 vIn_voxelIdx;
 //This vertex is part of a plane pointing perpendicular to an axis.
 //This value uses 2 bits for the axis this face is perpendicular to,
 //    and one bit for the direction it's facing. 
-in uint vIn_faceAxisDir;
+layout (location=1) in uint vIn_faceAxisDir;
 
 //Transforms the voxels from their grid space into world space,
 //    then from there into window-space.
@@ -30,6 +30,7 @@ void main() {
 
     //Compute position in voxel grid space.
     vec3 gridPos = vec3(vIn_voxelIdx);
+    gridPos[faceAxis] += (bFaceDir==1) ? 1.0 : 0.0;
 
     //Compute world and NDC position.
     vec4 worldPos4 = u_mat_world * vec4(gridPos, 1);

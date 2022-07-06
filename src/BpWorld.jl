@@ -19,7 +19,7 @@ include("post_process.jl")
 function main()
     bp_gl_context(v2i(1000, 700), "B+ World",
                   vsync=VsyncModes.On,
-                  debug_mode=true,
+                  debug_mode=@bpworld_debug(true, false),
                   glfw_hints = Dict{Int32, Int32}(
                       Int32(GLFW.DEPTH_BITS) => Int32(GLFW.DONT_CARE),
                       Int32(GLFW.STENCIL_BITS) => Int32(GLFW.DONT_CARE)

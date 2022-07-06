@@ -14,7 +14,7 @@ flat in uint fIn_faceAxisDir;
 uniform float u_specular, u_specularDropoff;
 uniform sampler2D u_tex2d_albedo;
 
-uniform vec3 u_camPos, u_camDir;
+uniform vec3 u_camPos;
 
 
 out vec4 fOut_color;

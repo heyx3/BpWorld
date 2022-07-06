@@ -1,6 +1,10 @@
+"Asserts for this specific project: `@bpworld_assert`, `@bpworld_debug`."
+@make_toggleable_asserts bpworld_
+bpworld_asserts_enabled() = false
+
+"Checks and prints any messages/errors from OpenGL. Does nothing in release mode."
 function check_gl_logs(context::String)
-    logs = pull_gl_logs()
-    for log in pull_gl_logs()
+    @bpworld_debug for log in pull_gl_logs()
         if log.severity in (DebugEventSeverities.high, DebugEventSeverities.medium)
             @error "While $context. $(sprint(show, log))"
         elseif log.severity == DebugEventSeverities.low
@@ -11,8 +15,5 @@ function check_gl_logs(context::String)
             error("Unhandled case: ", log.severity)
         end
     end
+    return nothing
 end
-
-"Asserts for this specific project: `@bpworld_assert`, `@bpworld_debug`."
-@make_toggleable_asserts bpworld_
-bpworld_asserts_enabled() = false

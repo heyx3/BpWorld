@@ -3,11 +3,16 @@ macro bpw_asset_str(str::AbstractString)
     return joinpath(ASSETS_FOLDER, str)
 end
 
+#################
+##   Shaders   ##
+#################
+
 "
 Any shader code before this token is removed.
 This allows you to add things for the IDE/linter that get ignored by this game.
 "
 const SHADER_CUTOFF_TOKEN = "#J#J#"
+
 "
 Compiles a shader for this project, handling `#include`s (crudely; relative to 'assets' folder)
     and applying `SHADER_CUTOFF_TOKEN`.
@@ -95,6 +100,51 @@ compile_shader_files(name_without_ext::AbstractString) = compile_shader_files(
 )
 
 
+##################
+##   Textures   ##
+##################
+
+default_pixel_converter(p_in::N0f8, ::Type{UInt8}) = reinterpret(p_in)
+default_pixel_converter(p_in::Colorant{N0f8}, ::Type{UInt8}) = reinterpret(red(p_in))
+default_pixel_converter(p_in::Colorant{N0f8}, ::Type{Vec{3, UInt8}}) = Vec{3, UInt8}(
+    map(reinterpret, (red(p_in), green(p_in), blue(p_in)))...
+)
+default_pixel_converter(p_in::Colorant{N0f8}, ::Type{Vec{4, UInt8}}) = Vec{4, UInt8}(
+    map(reinterpret, (red(p_in), green(p_in), blue(p_in), alpha(p_in)))...
+)
+default_pixel_converter(p_in::Colorant{<:FixedPoint}, ::Type{Vec{3, TU}}) where {TU<:Unsigned} = Vec{3, TU}(
+    map((red(p_in), green(p_in), blue(p_in))) do x_in
+        return typemax(TU) * round(reinterpret(x_in) / typemax(typeof(red(p_in))))
+    end
+)
+default_pixel_converter(p_in::Colorant{<:FixedPoint}, ::Type{Vec{4, TU}}) where {TU<:Unsigned} = Vec{4, TU}(
+    map((red(p_in), green(p_in), blue(p_in), alpha(p_in))) do x_in
+        return typemax(TU) * round(reinterpret(x_in) / typemax(typeof(red(p_in))))
+    end
+)
+
+function load_tex( full_path::AbstractString,
+                   ::Type{TOutPixel},
+                   tex_format::TexFormat,
+                   converter::TConverter = default_pixel_converter
+                 )::Texture where {TOutPixel, TConverter}
+    pixels_raw::Matrix = load(full_path)
+    raw_tex_size = v2i(size(pixels_raw)...)
+
+    tex_size = raw_tex_size.yx
+    pixels = Matrix{TOutPixel}(undef, tex_size.data)
+    for p_out::v2i in 1:v2i(tex_size)
+        p_in = v2i(tex_size.y - p_out.y + 1, p_out.x)
+        pixels[p_out] = converter(pixels_raw[p_in], TOutPixel)
+    end
+
+    return Texture(tex_format, pixels)
+end
+
+
+################
+##   Assets   ##
+################
 
 mutable struct Assets
     tex_tile::Texture
@@ -113,48 +163,28 @@ end
 
 
 function Assets()
-    # Tile texture:
-    tex_tile_pixels_raw::AbstractMatrix = load(bpw_asset"Tile.png")
-    tex_tile_pixels = Matrix{UInt8}(undef, (size(tex_tile_pixels_raw, 2),
-                                            size(tex_tile_pixels_raw, 1)))
-    for p::v2i in 1:v2i(size(tex_tile_pixels))
-        input = tex_tile_pixels_raw[size(tex_tile_pixels, 2) - p.y + 1, p.x]
-        tex_tile_pixels[p] = reinterpret(input.r)
-    end
-    tex_tile = Texture(
+    tex_tile = load_tex(
+        bpw_asset"Tile.png", UInt8,
         SimpleFormat(FormatTypes.normalized_uint,
                      SimpleFormatComponents.R,
-                     SimpleFormatBitDepths.B8),
-        tex_tile_pixels
+                     SimpleFormatBitDepths.B8)
     )
-
-    # Quit confirmation texture:
-    tex_quitconf_pixels_raw::AbstractMatrix = load(bpw_asset"QuitConfirmation.png")
-    tex_quitconf_pixels = Matrix{vRGBAu8}(undef, (size(tex_quitconf_pixels_raw, 2),
-                                                  size(tex_quitconf_pixels_raw, 1)))
-    for p::v2i in 1:v2i(size(tex_quitconf_pixels))
-        pixel = tex_quitconf_pixels_raw[size(tex_quitconf_pixels, 2) - p.y + 1, p.x]
-        v = Vec(reinterpret(red(pixel)),
-                reinterpret(green(pixel)),
-                reinterpret(blue(pixel)),
-                reinterpret(alpha(pixel)))
-        vF = v / typemax(typeof(v.x))
-        v_out = map(round, vF) * typemax(UInt8)
-        tex_quitconf_pixels[p] = convert(vRGBAu8, v_out)
-    end
-    tex_quitconf = Texture(
+    tex_quitconf = load_tex(
+        bpw_asset"QuitConfirmation.png", vRGBAu8,
         SimpleFormat(FormatTypes.normalized_uint,
                      SimpleFormatComponents.RGBA,
-                     SimpleFormatBitDepths.B8),
-        tex_quitconf_pixels
+                     SimpleFormatBitDepths.B8)
     )
 
-    # Voxel shader program:
     prog_voxel = compile_shader_files("voxel")
 
     return Assets(tex_tile, tex_quitconf, prog_voxel)
 end
 
+
+###################
+##   Interface   ##
+###################
 
 "
 Configures the parameters of the voxel shader,
@@ -165,7 +195,7 @@ Does not activate texture views!
 function prepare_program_voxel( assets::Assets,
                                 world_mat::fmat4, viewproj_mat::fmat4,
                                 albedo_rgb::Texture,
-                                cam_pos::v3f, cam_dir::v3f,
+                                cam_pos::v3f,
                                 specular::Float32 = @f32(0.5),
                                 specular_power::Float32 = @f32(86.0)
                               )
@@ -175,11 +205,14 @@ function prepare_program_voxel( assets::Assets,
     set_uniform(assets.prog_voxel, "u_specularDropoff", specular_power)
     set_uniform(assets.prog_voxel, "u_tex2d_albedo", albedo_rgb)
     set_uniform(assets.prog_voxel, "u_camPos", cam_pos)
-    set_uniform(assets.prog_voxel, "u_camDir", cam_dir)
 
     # Disable culling until I can make sure all triangles are oriented correctly.
     #TODO: Figure out voxel triangle orientation.
     set_culling(FaceCullModes.Off)
 
-    return
+    set_depth_writes(true)
+    set_depth_test(ValueTests.LessThan)
+    set_blending(make_blend_opaque(BlendStateRGBA))
+
+    return nothing
 end
