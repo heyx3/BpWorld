@@ -1,7 +1,10 @@
 // Mostly taken from the following shaders:
 //    https://www.shadertoy.com/view/7stBDH
 
-#define OSCILLATE(a, b, input) (mix(a, b, 0.5 + (0.5 * sin(2.0 * 3.14159265 * (input)))))
+#define PI (3.1415926535897932384626433832795)
+#define PI2 (PI * 2.0)
+
+#define OSCILLATE(a, b, input) (mix(a, b, 0.5 + (0.5 * sin(PI2 * (input)))))
 
 #define INV_LERP(a, b, x) ((x-a) / (b-a))
 #define SATURATE(x) clamp(x, 0.0, 1.0)
@@ -43,7 +46,7 @@ float sumComponents(vec3 v) { return v.x + v.y + v.z; }
 float sumComponents(vec4 v) { return v.x + v.y + v.z + v.w; }
 
 //Gets the angle of the given vector, in the range 0-1.
-float angleT(vec2 dir) { return 0.5 + (0.5 * atan(dir.y, dir.x)/3.14159265); }
+float angleT(vec2 dir) { return 0.5 + (0.5 * atan(dir.y, dir.x)/PI); }
 
 //Given a uniformly-distributed value, and another target value,
 //    biases the uniform value towards the target.
@@ -53,11 +56,11 @@ float applyBias(float x, float target, float biasStrength)
     //Degenerative case if x=0.
     if (x == 0.0)
         return mix(x, target, biasStrength);
-    
+
     //Get the "scale" of the target relative to x.
     //Multiplying x by this number would give exactly the target.
     float scale = target / x;
-    
+
     //Weaken the "scale" by pushing it towards 1.0, then apply it to 'x'.
     //Make sure to respect the sign, in case 'x' or 'target' is negative.
     return x * sign(scale) * pow(abs(scale), biasStrength);
@@ -98,6 +101,22 @@ float tripleSmoothSmoothstep(float a, float b, float c, float t)
 
 vec2 randUnitVector(float uniformRandom)
 {
-    float theta = uniformRandom * 2.0 * 3.14159265;
+    float theta = uniformRandom * PI2;
     return vec2(cos(theta), sin(theta));
+}
+
+float linearizedDepth(float renderedDepth, float zNear, float zFar)
+{
+    //Reference: https://stackoverflow.com/questions/51108596/linearize-depth
+
+    //OpenGL depth is from -1 to +1, but coming from the texture it'll be 0 to 1.
+    float z = -1.0 + (2.0 * renderedDepth);
+    return (2.0 * zNear * zFar) / ((zFar + zNear) - (z * (zFar - zNear)));
+}
+
+//Applies a world matrix (i.e. nothing weird like skew) to a direction,
+//    ignoring the translation component.
+vec3 transformDir(vec3 dir, mat4 transform)
+{
+    return (transform * vec4(dir, 0.0)).xyz;
 }

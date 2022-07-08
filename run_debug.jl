@@ -1,5 +1,7 @@
+cd(@__DIR__)
+
 using Pkg
-Pkg.activate(@__DIR__)
+Pkg.activate(".")
 
 # Enable some B+ asserts.
 using Bplus

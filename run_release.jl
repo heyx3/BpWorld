@@ -1,5 +1,7 @@
+cd(@__DIR__)
+
 using Pkg
-Pkg.activate(@__DIR__)
+Pkg.activate(".")
 
 using BpWorld
 # All asserts should be disabled by default.

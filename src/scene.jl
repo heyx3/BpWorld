@@ -43,8 +43,12 @@ Base.@kwdef mutable struct SceneInputs
     cam_upward::AbstractAxis = Axis_Key2(GLFW.KEY_E, GLFW.KEY_Q)
     cam_sprint::AbstractButton = Button_Key(GLFW.KEY_LEFT_SHIFT)
     cam_speed_change::AbstractAxis # Set in the constructor to the mouse wheel
+
+    capture_mouse::AbstractButton = Button_Key(GLFW.KEY_SPACE, mode=ButtonModes.just_pressed)
     quit::AbstractButton = Button_Key(GLFW.KEY_ESCAPE, mode=ButtonModes.just_pressed)
-    quit_confirm::AbstractButton = Button_Key(GLFW.KEY_ENTER, mode=ButtonModes.just_pressed)
+    quit_confirm::AbstractButton = Button_Key(GLFW.KEY_ENTER, mode=ButtonModes.just_released)
+
+    reload_shaders::AbstractButton = Button_Key(GLFW.KEY_P, mode=ButtonModes.just_pressed)
 end
 SceneInputs(window::GLFW.Window; kw...) = SceneInputs(cam_speed_change=Axis_MouseWheel(window), kw...)
 
@@ -54,33 +58,67 @@ SceneInputs(window::GLFW.Window; kw...) = SceneInputs(cam_speed_change=Axis_Mous
 #############
 
 mutable struct Scene
+    mesh_voxels::Mesh
     mesh_voxel_vertices::Buffer
     mesh_voxel_indices::Buffer
-    mesh_voxels::Mesh
-    voxel_transform::fmat4
 
     cam::Cam3D
     cam_settings::Cam3D_Settings
+    is_mouse_captured::Bool
     inputs::SceneInputs
+
+    g_buffer::Target
+    target_tex_depth::Texture
+    target_tex_color::Texture  # HDR, RGB is albedo, alpha is emissive strength
+    target_tex_surface::Texture # R=Metallic, G=Roughness
+    target_tex_normals::Texture #  RGB = signed normal vector
 end
 function Base.close(s::Scene)
     # Try to close() everything that isnt specifically blacklisted.
     # This is the safest option to avoid leaks.
-    blacklist = tuple(:voxel_transform, :cam, :cam_settings, :inputs)
+    blacklist = tuple(:voxel_transform, :cam, :cam_settings, :is_mouse_captured, :inputs)
     whitelist = setdiff(fieldnames(typeof(s)), blacklist)
     for field in whitelist
         close(getfield(s, field))
     end
 end
 
+function set_up_g_buffer(size::v2i)::Tuple
+    textures = tuple(
+        #TODO: Try lowering these until the quality is noticeably affected.
+        Texture(DepthStencilFormats.depth_32u, size),
+        Texture(SimpleFormat(FormatTypes.float,
+                             SimpleFormatComponents.RGBA,
+                             SimpleFormatBitDepths.B32),
+                size),
+        Texture(SimpleFormat(FormatTypes.normalized_uint,
+                             SimpleFormatComponents.RG,
+                             SimpleFormatBitDepths.B8),
+                size),
+        Texture(SimpleFormat(FormatTypes.normalized_int,
+                             SimpleFormatComponents.RGB,
+                             SimpleFormatBitDepths.B8),
+                size)
+    )
+    return tuple(
+        Target(
+            [TargetOutput(tex = t) for t in textures[2:end]],
+            TargetOutput(tex = textures[1])
+        ),
+        textures...
+    )
+end
+
 function Scene(window::GLFW.Window, assets::Assets)
+    window_size::v2i = get_window_size(window)
+
     # Generate some voxel data.
-    voxel_size = v3i(Val(16))
+    voxel_size = v3i(Val(64))
     voxels = VoxelGrid(undef, voxel_size.data)
     function voxel_func(pos::v3i)::Bool
         posf = (v3f(pos) + @f32(0.5)) / v3f(voxel_size - 1)
         @bpworld_assert posf isa v3f # Double-check the types work as expected
-        return vdist(posf, v3f(0.5, 0.5, 0.5)) <= 0.25 # A sphere of radius 0.25
+        return vdist(posf, v3f(0, 0, 0)) <= 0.55 # A sphere
     end
     @threads for i in 1:length(voxels)
         pos = v3i(mod1(i, voxel_size.x),
@@ -91,25 +129,24 @@ function Scene(window::GLFW.Window, assets::Assets)
 
     # Set up the mesh for that voxel.
     (voxel_verts, voxel_inds) = calculate_mesh(voxels)
-    check_gl_logs("Before setting up buffers")
     mesh_voxel_vertices = Buffer(false, voxel_verts)
-    check_gl_logs("Making vertex buffer")
     mesh_voxel_indices = Buffer(false, voxel_inds)
-    check_gl_logs("Making index buffer")
     mesh_voxels = Mesh(
         PrimitiveTypes.triangle,
         [ VertexDataSource(mesh_voxel_vertices, sizeof(VoxelVertex)) ],
-        voxel_vertex_layout(1)
-        #,   (mesh_voxel_indices, typeof(voxel_inds[1]))
+        voxel_vertex_layout(1),
+        (mesh_voxel_indices, typeof(voxel_inds[1]))
     )
-    check_gl_logs("Making Mesh")
-    voxel_transform = m4_world(zero(v3f), fquat(), v3f(Val(100)))
 
-    window_size::v2i = get_window_size()
+    g_buffer_data = set_up_g_buffer(window_size)
+
+    check_gl_logs("After scene initialization")
     return Scene(
-        mesh_voxel_vertices, mesh_voxel_indices, mesh_voxels, voxel_transform,
+        mesh_voxels,
+        mesh_voxel_vertices, mesh_voxel_indices,
+
         Cam3D{Float32}(
-            v3f(-10, -10, 50),
+            v3f(300, -100, 4000),
             vnorm(v3f(1, 1, -0.8)),
             get_up_vector(),
             Box_minmax(@f32(0.05), @f32(10000)),
@@ -119,9 +156,11 @@ function Scene(window::GLFW.Window, assets::Assets)
         Cam3D_Settings{Float32}(
             move_speed = @f32(200),
             move_speed_min = @f32(1),
-            move_speed_max = @f32(1000)
+            move_speed_max = @f32(2000)
         ),
-        SceneInputs(window)
+        false, SceneInputs(window),
+
+        g_buffer_data...
     )
 end
 
@@ -144,10 +183,17 @@ function update(scene::Scene, delta_seconds::Float32, window::GLFW.Window)
             error("Unhandled case: ", typeof(field_val))
         end
     end
+    if button_value(scene.inputs.capture_mouse)
+        scene.is_mouse_captured = !scene.is_mouse_captured
+        GLFW.SetInputMode(
+            window, GLFW.CURSOR,
+            scene.is_mouse_captured ? GLFW.CURSOR_DISABLED : GLFW.CURSOR_NORMAL
+        )
+    end
 
     # Update the camera.
     cam_input = Cam3D_Input(
-        true,
+        scene.is_mouse_captured,
         axis_value(scene.inputs.cam_yaw),
         axis_value(scene.inputs.cam_pitch),
         button_value(scene.inputs.cam_sprint),
@@ -167,20 +213,44 @@ function render(scene::Scene, assets::Assets)
     proj_mat = cam_projection_mat(scene.cam)
     viewproj_mat = m_combine(view_mat, proj_mat)
 
-    target_activate(nothing)
-    set_viewport(one(v2i), get_window_size())
-    set_scissor(nothing)
+    set_depth_writes(context, true)
 
-    render_clear(context, Bplus.GL.Ptr_Target(),
-                 vRGBAf(1, 0, 1, 0))
-    render_clear(context, Bplus.GL.Ptr_Target(),
-                 @f32 1.0)
+    target_activate(scene.g_buffer)
+    for i in 1:3
+        target_clear(scene.g_buffer, vRGBAf(0, 0, 0, 0), i)
+    end
+    target_clear(scene.g_buffer, @f32 1.0)
 
     # Draw the voxels.
-    prepare_program_voxel(assets, scene.voxel_transform, viewproj_mat,
-                          assets.tex_tile,
-                          scene.cam.pos)
-    view_activate(get_view(assets.tex_tile))
+    prepare_program_voxel(assets, zero(v3f), v3f(Val(100)), viewproj_mat)
+    view_activate(get_view(assets.tex_rocks_albedo))
+    view_activate(get_view(assets.tex_rocks_normals))
+    view_activate(get_view(assets.tex_rocks_surface))
     render_mesh(scene.mesh_voxels, assets.prog_voxel)
-    view_deactivate(get_view(assets.tex_tile))
+    view_deactivate(get_view(assets.tex_rocks_albedo))
+    view_deactivate(get_view(assets.tex_rocks_normals))
+    view_deactivate(get_view(assets.tex_rocks_surface))
+
+    #DEBUG: Draw one of the gbuffer targets.
+    # target_activate(nothing)
+    # render_clear(context, Bplus.GL.Ptr_Target(),
+    #              vRGBAf(1, 0, 1, 0),
+    #              0)
+    # resource_blit(scene.target_tex_normals)
+end
+
+function on_window_resized(scene::Scene, window::GLFW.Window, new_size::v2i)
+    if new_size != scene.g_buffer.size
+        close.((scene.g_buffer, scene.target_tex_depth,
+                scene.target_tex_color, scene.target_tex_normals,
+                scene.target_tex_surface))
+        new_data = set_up_g_buffer(new_size)
+        (
+            scene.g_buffer,
+            scene.target_tex_depth,
+            scene.target_tex_color,
+            scene.target_tex_surface,
+            scene.target_tex_normals
+        ) = new_data
+    end
 end
