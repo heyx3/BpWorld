@@ -137,6 +137,8 @@ function prepare_program_lighting( assets::Assets,
 end
 
 function reload_shaders(assets::Assets)
+    #TODO: Reload voxel assets too
+    
     # Is field enumeration order guaranteed?
     # It seems to work in the REPL.
     shaders = load_all_shaders()
