@@ -21,8 +21,8 @@ function mouse_wheel_changed(axis_mouseWheel, window::GLFW.Window,
 end
 @bp_axis raw MouseWheel begin
     #TODO: Choose which wheel axis
-    MouseWheel(window::GLFW.Window) = begin
-        me = MouseWheel()
+    MouseWheel(window::GLFW.Window; kw...) = begin
+        me = MouseWheel(; kw...)
         GLFW.SetScrollCallback(window, (wnd, dX, dY) -> mouse_wheel_changed(me, wnd, dX, dY))
         return me
     end
@@ -50,7 +50,11 @@ Base.@kwdef mutable struct SceneInputs
 
     reload_shaders::AbstractButton = Button_Key(GLFW.KEY_P, mode=ButtonModes.just_pressed)
 end
-SceneInputs(window::GLFW.Window; kw...) = SceneInputs(cam_speed_change=Axis_MouseWheel(window), kw...)
+SceneInputs(window::GLFW.Window; kw...) = SceneInputs(
+    cam_speed_change=Axis_MouseWheel(window; scale=-1)
+    ;
+    kw...
+)
 
 
 #############
@@ -173,11 +177,11 @@ function Scene(window::GLFW.Window, assets::Assets)
             @f32(window_size.x / window_size.y)
         ),
         Cam3D_Settings{Float32}(
-            move_speed = @f32(200),
+            move_speed = @f32(500),
             move_speed_min = @f32(1),
             move_speed_max = @f32(2000)
         ),
-        false, SceneInputs(window),
+        false, SceneInputs(window), @f32(0.0),
 
         g_buffer_data...
     )
@@ -192,7 +196,7 @@ end
 "Updates the scene."
 function update(scene::Scene, delta_seconds::Float32, window::GLFW.Window)
     scene.total_seconds += delta_seconds
-     
+
     # Update inputs.
     for input_names in fieldnames(typeof(scene.inputs))
         field_val = getfield(scene.inputs, input_names)

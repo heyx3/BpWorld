@@ -80,7 +80,7 @@ function calculate_mesh(grid::VoxelGrid, layer::UInt8)::Tuple{Vector{VoxelVertex
             @set! neighbor_voxel_idx[axis] += dir
 
             is_on_edge::Bool = !in(neighbor_voxel_idx, 1:grid_size)
-            is_neighbor_free::Bool = is_on_edge || (grid[neighbor_voxel_idx] == EMPTY_VOXEL)S
+            is_neighbor_free::Bool = is_on_edge || (grid[neighbor_voxel_idx] == EMPTY_VOXEL)
             if is_neighbor_free
                 @bpworld_assert(length(vertices) < (typemax(UInt32) - 4),
                                 "Holy crap that's a lot of vertices")

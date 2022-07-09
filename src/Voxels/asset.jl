@@ -128,7 +128,7 @@ end
 
 function render_voxels(mesh::Mesh, asset::AssetRenderer,
                        offset::v3f, scale::v3f, camera::Cam3D,
-                       total_elapsed_seconds::Float64)
+                       total_elapsed_seconds::Float32)
     # Set render state.
     set_depth_writes(true)
     set_depth_test(ValueTests.LessThan)
@@ -145,7 +145,7 @@ function render_voxels(mesh::Mesh, asset::AssetRenderer,
     set_uniform(asset.shader_program, "u_camPos", camera.pos)
     set_uniform(asset.shader_program, "u_camForward", camera.forward)
     set_uniform(asset.shader_program, "u_camUp", camera.up)
-    set_uniform(asset.shader_program, "u_totalSeconds", @f32(total_elapsed_seconds))
+    set_uniform(asset.shader_program, "u_totalSeconds", total_elapsed_seconds)
     for (u_name, texture) in asset.textures
         set_uniform(asset.shader_program, u_name, texture)
     end

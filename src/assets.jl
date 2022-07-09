@@ -38,7 +38,7 @@ mutable struct Assets
     prog_lighting::Program
 end
 function Base.close(a::Assets)
-    for L in voxel_layers
+    for L in a.voxel_layers
         close(L)
     end
 
@@ -85,7 +85,7 @@ function Assets()
     ]
 
     check_gl_logs("After asset initialization")
-    return Assets(textures..., shaders..., voxel_assets)
+    return Assets(voxel_assets, textures..., shaders...)
 end
 
 
