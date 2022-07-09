@@ -58,14 +58,16 @@ SceneInputs(window::GLFW.Window; kw...) = SceneInputs(cam_speed_change=Axis_Mous
 #############
 
 mutable struct Scene
-    mesh_voxels::Mesh
-    mesh_voxel_vertices::Buffer
-    mesh_voxel_indices::Buffer
+    voxel_grid::VoxelGrid
+
+    mesh_voxel_layers::Vector{Mesh}
+    mesh_voxel_buffers::Vector{Buffer}
 
     cam::Cam3D
     cam_settings::Cam3D_Settings
     is_mouse_captured::Bool
     inputs::SceneInputs
+    total_seconds::Float32
 
     g_buffer::Target
     target_tex_depth::Texture
@@ -74,9 +76,18 @@ mutable struct Scene
     target_tex_normals::Texture #  RGB = signed normal vector
 end
 function Base.close(s::Scene)
+    for mesh in s.mesh_voxel_layers
+        close(mesh)
+    end
+    for buf in s.mesh_voxel_buffers
+        close(buf)
+    end
+
     # Try to close() everything that isnt specifically blacklisted.
     # This is the safest option to avoid leaks.
-    blacklist = tuple(:voxel_transform, :cam, :cam_settings, :is_mouse_captured, :inputs)
+    blacklist = tuple(:mesh_voxel_layers, :mesh_voxel_buffers,
+                      :voxel_grid, :total_seconds,
+                      :cam, :cam_settings, :is_mouse_captured, :inputs)
     whitelist = setdiff(fieldnames(typeof(s)), blacklist)
     for field in whitelist
         close(getfield(s, field))
@@ -118,7 +129,7 @@ function Scene(window::GLFW.Window, assets::Assets)
     function voxel_func(pos::v3i)::Bool
         posf = (v3f(pos) + @f32(0.5)) / v3f(voxel_size - 1)
         @bpworld_assert posf isa v3f # Double-check the types work as expected
-        return vdist(posf, v3f(0, 0, 0)) <= 0.55 # A sphere
+        return (vdist(posf, v3f(0, 0, 0)) <= 0.55) ? 1 : 0
     end
     @threads for i in 1:length(voxels)
         pos = v3i(mod1(i, voxel_size.x),
@@ -127,23 +138,31 @@ function Scene(window::GLFW.Window, assets::Assets)
         @inbounds voxels[i] = voxel_func(pos)
     end
 
-    # Set up the mesh for that voxel.
-    (voxel_verts, voxel_inds) = calculate_mesh(voxels)
-    mesh_voxel_vertices = Buffer(false, voxel_verts)
-    mesh_voxel_indices = Buffer(false, voxel_inds)
-    mesh_voxels = Mesh(
-        PrimitiveTypes.triangle,
-        [ VertexDataSource(mesh_voxel_vertices, sizeof(VoxelVertex)) ],
-        voxel_vertex_layout(1),
-        (mesh_voxel_indices, typeof(voxel_inds[1]))
-    )
+    # Set up the meshes for each voxel layer.
+    n_layers::Int = max(maximum(voxels), 1)
+    voxel_mesh_buffers = Buffer[ ]
+    voxel_meshes = Mesh[ ]
+    for i in 1:n_layers
+        (voxel_verts, voxel_inds) = calculate_mesh(voxels, UInt8(i))
+
+        mesh_voxel_vertices = Buffer(false, voxel_verts)
+        mesh_voxel_indices = Buffer(false, voxel_inds)
+        push!(voxel_mesh_buffers, mesh_voxel_vertices, mesh_voxel_indices)
+
+        mesh_voxels = Mesh(
+            PrimitiveTypes.triangle,
+            [ VertexDataSource(mesh_voxel_vertices, sizeof(VoxelVertex)) ],
+            voxel_vertex_layout(1),
+            (mesh_voxel_indices, typeof(voxel_inds[1]))
+        )
+        push!(voxel_meshes, mesh_voxels)
+    end
 
     g_buffer_data = set_up_g_buffer(window_size)
 
     check_gl_logs("After scene initialization")
     return Scene(
-        mesh_voxels,
-        mesh_voxel_vertices, mesh_voxel_indices,
+        voxels, voxel_meshes, voxel_mesh_buffers,
 
         Cam3D{Float32}(
             v3f(300, -100, 4000),
@@ -172,6 +191,8 @@ end
 
 "Updates the scene."
 function update(scene::Scene, delta_seconds::Float32, window::GLFW.Window)
+    scene.total_seconds += delta_seconds
+     
     # Update inputs.
     for input_names in fieldnames(typeof(scene.inputs))
         field_val = getfield(scene.inputs, input_names)
@@ -222,21 +243,11 @@ function render(scene::Scene, assets::Assets)
     target_clear(scene.g_buffer, @f32 1.0)
 
     # Draw the voxels.
-    prepare_program_voxel(assets, zero(v3f), v3f(Val(100)), viewproj_mat)
-    view_activate(get_view(assets.tex_rocks_albedo))
-    view_activate(get_view(assets.tex_rocks_normals))
-    view_activate(get_view(assets.tex_rocks_surface))
-    render_mesh(scene.mesh_voxels, assets.prog_voxel)
-    view_deactivate(get_view(assets.tex_rocks_albedo))
-    view_deactivate(get_view(assets.tex_rocks_normals))
-    view_deactivate(get_view(assets.tex_rocks_surface))
-
-    #DEBUG: Draw one of the gbuffer targets.
-    # target_activate(nothing)
-    # render_clear(context, Bplus.GL.Ptr_Target(),
-    #              vRGBAf(1, 0, 1, 0),
-    #              0)
-    # resource_blit(scene.target_tex_normals)
+    for (i::Int, mesh::Mesh) in enumerate(scene.mesh_voxel_layers)
+        render_voxels(mesh, assets.voxel_layers[i],
+                      zero(v3f), v3f(Val(100)),
+                      scene.cam, scene.total_seconds)
+    end
 end
 
 function on_window_resized(scene::Scene, window::GLFW.Window, new_size::v2i)

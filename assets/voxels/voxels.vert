@@ -29,10 +29,11 @@ UnpackedVertexInput unpackInput(uvec3 vIn)
 //Transforms the voxels from their grid space into world space,
 //    then from there into window-space.
 //No world-space rotation is allowed, to simplify normals calculation.
-uniform vec3 u_offset, u_scale;
+uniform vec3 u_world_offset, u_world_scale;
 uniform mat4 u_mat_viewproj;
 
 out vec3 fIn_worldPos;
+out vec3 fIn_voxelPos;
 out vec2 fIn_uv;
 out uint fIn_packedFaceAxisDir;
 
@@ -44,9 +45,10 @@ void main() {
     //Compute position in voxel grid space.
     vec3 gridPos = vec3(vIn.voxelIdx);
     gridPos[vIn.faceAxis] += (vIn.bFaceDir == 1) ? 1.0 : 0.0;
+    fIn_voxelPos;
 
     //Compute world and NDC position.
-    vec3 worldPos = u_offset + (u_scale * gridPos);
+    vec3 worldPos = u_world_offset + (u_world_scale * gridPos);
     gl_Position = u_mat_viewproj * vec4(worldPos, 1);
     fIn_worldPos = worldPos;
 

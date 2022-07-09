@@ -11,7 +11,7 @@ Bplus.GL.bp_gl_asserts_enabled() = true
 
 # Enable BpWorld asserts.
 using BpWorld
-BpWorld.bpworld_asserts_enabled() = true
+BpWorld.Utils.bpworld_asserts_enabled() = true
 
 # Run!
 BpWorld.main()

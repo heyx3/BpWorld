@@ -1,6 +1,3 @@
-const VoxelGrid = Array{Bool, 3}
-
-
 "
 A CPU representation of the data associated with each vertex of a voxel mesh.
 Note that this internal representation uses 0-based counting.
@@ -54,8 +51,8 @@ voxel_vertex_layout(buffer_idx::Int = 1) = [
     VertexAttribute(buffer_idx, 0, VertexData_UVector(3, UInt32))
 ]
 
-"Calculates the vertices and indices needed to render the given voxel grid"
-function calculate_mesh(grid::VoxelGrid)::Tuple{Vector{VoxelVertex}, Vector{UInt32}}
+"Calculates the vertices and indices needed to render the given voxel layer in the given grid"
+function calculate_mesh(grid::VoxelGrid, layer::UInt8)::Tuple{Vector{VoxelVertex}, Vector{UInt32}}
 @inbounds begin
     grid_size = v3i(size(grid))
 
@@ -75,7 +72,7 @@ function calculate_mesh(grid::VoxelGrid)::Tuple{Vector{VoxelVertex}, Vector{UInt
             @set! voxel_idx[axis3] = plane_idx.y
 
             # For each filled voxel, draw its boundary with empty neighbors.
-            if !grid[voxel_idx]
+            if grid[voxel_idx] == EMPTY_VOXEL
                 continue
             end
 
@@ -83,7 +80,7 @@ function calculate_mesh(grid::VoxelGrid)::Tuple{Vector{VoxelVertex}, Vector{UInt
             @set! neighbor_voxel_idx[axis] += dir
 
             is_on_edge::Bool = !in(neighbor_voxel_idx, 1:grid_size)
-            is_neighbor_free::Bool = is_on_edge || !grid[neighbor_voxel_idx]
+            is_neighbor_free::Bool = is_on_edge || (grid[neighbor_voxel_idx] == EMPTY_VOXEL)S
             if is_neighbor_free
                 @bpworld_assert(length(vertices) < (typemax(UInt32) - 4),
                                 "Holy crap that's a lot of vertices")
@@ -115,4 +112,4 @@ function calculate_mesh(grid::VoxelGrid)::Tuple{Vector{VoxelVertex}, Vector{UInt
 
     return tuple(vertices, indices)
 end # @inbounds
-end
+end # calculate_mesh()
