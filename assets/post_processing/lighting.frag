@@ -1,7 +1,7 @@
 //Tell the linter about stuff that the julia program normally injects.
 #version 460
 #extension GL_GOOGLE_include_directive: require
-//z#extension GL_ARB_bindless_texture : require
+//#extension GL_ARB_bindless_texture : require
 #extension GL_ARB_gpu_shader_int64 : require
 // #J#J#
 //  ^^ Tells the Julia project to cut off everything before it
@@ -27,9 +27,7 @@ struct Camera
 {
     vec3 pos, forward, right, up;
     float nearClip, farClip;
-    mat4 viewMat, invViewMat,
-         projMat, invProjMat,
-         invViewProjMat;
+    mat4 invViewProjMat;
 };
 uniform Camera u_camera;
 
@@ -109,6 +107,7 @@ vec3 microfacetLighting(vec3 normal, vec3 towardsCamera, vec3 towardsLight,
     vec3 totalLight = (((energyOfDiffuse / PI) * albedo) + specular) *
                       lightIrradiance * diffuseStrength;
 
+//return vec3(roughness);
     return totalLight;
 }
 

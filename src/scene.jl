@@ -21,8 +21,8 @@ function mouse_wheel_changed(axis_mouseWheel, window::GLFW.Window,
 end
 @bp_axis raw MouseWheel begin
     #TODO: Choose which wheel axis
-    MouseWheel(window::GLFW.Window) = begin
-        me = MouseWheel()
+    MouseWheel(window::GLFW.Window; kw...) = begin
+        me = MouseWheel(; kw...)
         GLFW.SetScrollCallback(window, (wnd, dX, dY) -> mouse_wheel_changed(me, wnd, dX, dY))
         return me
     end
@@ -50,7 +50,11 @@ Base.@kwdef mutable struct SceneInputs
 
     reload_shaders::AbstractButton = Button_Key(GLFW.KEY_P, mode=ButtonModes.just_pressed)
 end
-SceneInputs(window::GLFW.Window; kw...) = SceneInputs(cam_speed_change=Axis_MouseWheel(window), kw...)
+SceneInputs(window::GLFW.Window; kw...) = SceneInputs(
+    cam_speed_change=Axis_MouseWheel(window; scale=-1)
+    ;
+    kw...
+)
 
 
 #############
@@ -58,14 +62,17 @@ SceneInputs(window::GLFW.Window; kw...) = SceneInputs(cam_speed_change=Axis_Mous
 #############
 
 mutable struct Scene
-    mesh_voxels::Mesh
-    mesh_voxel_vertices::Buffer
-    mesh_voxel_indices::Buffer
+    voxel_grid::VoxelGrid
+    voxel_layers::Vector{Voxels.AssetRenderer}
+
+    mesh_voxel_layers::Vector{Mesh}
+    mesh_voxel_buffers::Vector{Buffer}
 
     cam::Cam3D
     cam_settings::Cam3D_Settings
     is_mouse_captured::Bool
     inputs::SceneInputs
+    total_seconds::Float32
 
     g_buffer::Target
     target_tex_depth::Texture
@@ -76,10 +83,19 @@ end
 function Base.close(s::Scene)
     # Try to close() everything that isnt specifically blacklisted.
     # This is the safest option to avoid leaks.
-    blacklist = tuple(:voxel_transform, :cam, :cam_settings, :is_mouse_captured, :inputs)
+    blacklist = tuple(:voxel_grid, :total_seconds,
+                      :cam, :cam_settings, :is_mouse_captured, :inputs)
     whitelist = setdiff(fieldnames(typeof(s)), blacklist)
     for field in whitelist
-        close(getfield(s, field))
+        v = getfield(s, field)
+        if v isa AbstractVector
+            for el in v
+                close(el)
+            end
+            empty!(v)
+        else
+            close(v)
+        end
     end
 end
 
@@ -112,13 +128,47 @@ end
 function Scene(window::GLFW.Window, assets::Assets)
     window_size::v2i = get_window_size(window)
 
+    # Hard-code the voxel assets to load for now.
+    voxel_assets = [
+        Voxels.AssetRenderer(JSON3.read(open(io -> read(io, String),
+                                             joinpath(VOXELS_ASSETS_PATH, "rocks", "rocks.json"),
+                                             "r"),
+                                        Voxels.AssetData)),
+        Voxels.AssetRenderer(JSON3.read(open(io -> read(io, String),
+                                             joinpath(VOXELS_ASSETS_PATH, "scifi", "scifi-blue.json"),
+                                             "r"),
+                                        Voxels.AssetData)),
+        Voxels.AssetRenderer(JSON3.read(open(io -> read(io, String),
+                                             joinpath(VOXELS_ASSETS_PATH, "scifi", "scifi-red.json"),
+                                             "r"),
+                                        Voxels.AssetData))
+    ]
+
     # Generate some voxel data.
     voxel_size = v3i(Val(64))
     voxels = VoxelGrid(undef, voxel_size.data)
-    function voxel_func(pos::v3i)::Bool
+    function voxel_func(pos::v3i)::UInt8
         posf = (v3f(pos) + @f32(0.5)) / v3f(voxel_size - 1)
         @bpworld_assert posf isa v3f # Double-check the types work as expected
-        return vdist(posf, v3f(0, 0, 0)) <= 0.55 # A sphere
+
+        dist_to_blocks = vdist.(Ref(posf), tuple(
+            v3f(0.75, 0.75, 0.5),
+            v3f(0.25, 0.25, 0.25)
+        ))
+        # If near the first sphere, output a scifi block.
+        if dist_to_blocks[1] < 0.1
+            return 2
+         # If near the second sphere, output another scifi block.
+        elseif dist_to_blocks[2] < 0.185
+            return 3
+        # If near the edge of the sphere, keep it empty space.
+        elseif (dist_to_blocks[1] < 0.18) || (dist_to_blocks[2] < 0.25)
+            return 0
+        # Otherwise, throw some fun noise in there.
+        else
+            return (perlin(posf * 4.0) < 0.45) ? 1 : 0
+            return (posf.z < 0.1) ? 1 : 0
+        end
     end
     @threads for i in 1:length(voxels)
         pos = v3i(mod1(i, voxel_size.x),
@@ -127,23 +177,32 @@ function Scene(window::GLFW.Window, assets::Assets)
         @inbounds voxels[i] = voxel_func(pos)
     end
 
-    # Set up the mesh for that voxel.
-    (voxel_verts, voxel_inds) = calculate_mesh(voxels)
-    mesh_voxel_vertices = Buffer(false, voxel_verts)
-    mesh_voxel_indices = Buffer(false, voxel_inds)
-    mesh_voxels = Mesh(
-        PrimitiveTypes.triangle,
-        [ VertexDataSource(mesh_voxel_vertices, sizeof(VoxelVertex)) ],
-        voxel_vertex_layout(1),
-        (mesh_voxel_indices, typeof(voxel_inds[1]))
-    )
+    # Set up the meshes for each voxel layer.
+    n_layers::Int = max(maximum(voxels), 1)
+    voxel_mesh_buffers = Buffer[ ]
+    voxel_meshes = Mesh[ ]
+    for i in 1:n_layers
+        (voxel_verts, voxel_inds) = calculate_mesh(voxels, UInt8(i))
+
+        mesh_voxel_vertices = Buffer(false, voxel_verts)
+        mesh_voxel_indices = Buffer(false, voxel_inds)
+        push!(voxel_mesh_buffers, mesh_voxel_vertices, mesh_voxel_indices)
+
+        mesh_voxels = Mesh(
+            PrimitiveTypes.triangle,
+            [ VertexDataSource(mesh_voxel_vertices, sizeof(VoxelVertex)) ],
+            voxel_vertex_layout(1),
+            (mesh_voxel_indices, typeof(voxel_inds[1]))
+        )
+        push!(voxel_meshes, mesh_voxels)
+    end
 
     g_buffer_data = set_up_g_buffer(window_size)
 
     check_gl_logs("After scene initialization")
     return Scene(
-        mesh_voxels,
-        mesh_voxel_vertices, mesh_voxel_indices,
+        voxels, voxel_assets,
+        voxel_meshes, voxel_mesh_buffers,
 
         Cam3D{Float32}(
             v3f(300, -100, 4000),
@@ -154,11 +213,11 @@ function Scene(window::GLFW.Window, assets::Assets)
             @f32(window_size.x / window_size.y)
         ),
         Cam3D_Settings{Float32}(
-            move_speed = @f32(200),
-            move_speed_min = @f32(1),
-            move_speed_max = @f32(2000)
+            move_speed = @f32(500),
+            move_speed_min = @f32(50),
+            move_speed_max = @f32(1000)
         ),
-        false, SceneInputs(window),
+        false, SceneInputs(window), @f32(0.0),
 
         g_buffer_data...
     )
@@ -172,6 +231,8 @@ end
 
 "Updates the scene."
 function update(scene::Scene, delta_seconds::Float32, window::GLFW.Window)
+    scene.total_seconds += delta_seconds
+
     # Update inputs.
     for input_names in fieldnames(typeof(scene.inputs))
         field_val = getfield(scene.inputs, input_names)
@@ -209,10 +270,6 @@ end
 function render(scene::Scene, assets::Assets)
     context::Context = get_context()
 
-    view_mat = cam_view_mat(scene.cam)
-    proj_mat = cam_projection_mat(scene.cam)
-    viewproj_mat = m_combine(view_mat, proj_mat)
-
     set_depth_writes(context, true)
 
     target_activate(scene.g_buffer)
@@ -222,21 +279,11 @@ function render(scene::Scene, assets::Assets)
     target_clear(scene.g_buffer, @f32 1.0)
 
     # Draw the voxels.
-    prepare_program_voxel(assets, zero(v3f), v3f(Val(100)), viewproj_mat)
-    view_activate(get_view(assets.tex_rocks_albedo))
-    view_activate(get_view(assets.tex_rocks_normals))
-    view_activate(get_view(assets.tex_rocks_surface))
-    render_mesh(scene.mesh_voxels, assets.prog_voxel)
-    view_deactivate(get_view(assets.tex_rocks_albedo))
-    view_deactivate(get_view(assets.tex_rocks_normals))
-    view_deactivate(get_view(assets.tex_rocks_surface))
-
-    #DEBUG: Draw one of the gbuffer targets.
-    # target_activate(nothing)
-    # render_clear(context, Bplus.GL.Ptr_Target(),
-    #              vRGBAf(1, 0, 1, 0),
-    #              0)
-    # resource_blit(scene.target_tex_normals)
+    for (i::Int, mesh::Mesh) in enumerate(scene.mesh_voxel_layers)
+        render_voxels(mesh, scene.voxel_layers[i],
+                      zero(v3f), v3f(Val(100)),
+                      scene.cam, scene.total_seconds)
+    end
 end
 
 function on_window_resized(scene::Scene, window::GLFW.Window, new_size::v2i)

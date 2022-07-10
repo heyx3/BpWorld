@@ -1,15 +1,18 @@
 module BpWorld
 
-using Setfield, Base.Threads
+using Setfield, Base.Threads, StructTypes, JSON3
 using GLFW, ModernGL, CImGui,
       ImageIO, FileIO, ColorTypes, FixedPointNumbers, ImageTransformations
+
 using Bplus,
       Bplus.Utilities, Bplus.Math, Bplus.GL,
       Bplus.Helpers, Bplus.SceneTree, Bplus.Input
 
+include("Utils/Utils.jl")
+using .Utils
 
-include("utils.jl")
-include("voxel_mesher.jl")
+include("Voxels/Voxels.jl")
+using .Voxels
 
 include("assets.jl")
 include("scene.jl")
