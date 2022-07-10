@@ -1,6 +1,8 @@
 // Common code that's needed by voxel fragment shaders.
 // Automatically inserted into any voxel fragment shader.
 
+#include <utils.shader>
+
 uniform vec3 u_camPos, u_camForward, u_camUp;
 uniform float u_totalSeconds;
 

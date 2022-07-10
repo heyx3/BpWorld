@@ -63,6 +63,7 @@ SceneInputs(window::GLFW.Window; kw...) = SceneInputs(
 
 mutable struct Scene
     voxel_grid::VoxelGrid
+    voxel_layers::Vector{Voxels.AssetRenderer}
 
     mesh_voxel_layers::Vector{Mesh}
     mesh_voxel_buffers::Vector{Buffer}
@@ -80,21 +81,21 @@ mutable struct Scene
     target_tex_normals::Texture #  RGB = signed normal vector
 end
 function Base.close(s::Scene)
-    for mesh in s.mesh_voxel_layers
-        close(mesh)
-    end
-    for buf in s.mesh_voxel_buffers
-        close(buf)
-    end
-
     # Try to close() everything that isnt specifically blacklisted.
     # This is the safest option to avoid leaks.
-    blacklist = tuple(:mesh_voxel_layers, :mesh_voxel_buffers,
-                      :voxel_grid, :total_seconds,
+    blacklist = tuple(:voxel_grid, :total_seconds,
                       :cam, :cam_settings, :is_mouse_captured, :inputs)
     whitelist = setdiff(fieldnames(typeof(s)), blacklist)
     for field in whitelist
-        close(getfield(s, field))
+        v = getfield(s, field)
+        if v isa AbstractVector
+            for el in v
+                close(el)
+            end
+            empty!(v)
+        else
+            close(v)
+        end
     end
 end
 
@@ -127,13 +128,47 @@ end
 function Scene(window::GLFW.Window, assets::Assets)
     window_size::v2i = get_window_size(window)
 
+    # Hard-code the voxel assets to load for now.
+    voxel_assets = [
+        Voxels.AssetRenderer(JSON3.read(open(io -> read(io, String),
+                                             joinpath(VOXELS_ASSETS_PATH, "rocks", "rocks.json"),
+                                             "r"),
+                                        Voxels.AssetData)),
+        Voxels.AssetRenderer(JSON3.read(open(io -> read(io, String),
+                                             joinpath(VOXELS_ASSETS_PATH, "scifi", "scifi-blue.json"),
+                                             "r"),
+                                        Voxels.AssetData)),
+        Voxels.AssetRenderer(JSON3.read(open(io -> read(io, String),
+                                             joinpath(VOXELS_ASSETS_PATH, "scifi", "scifi-red.json"),
+                                             "r"),
+                                        Voxels.AssetData))
+    ]
+
     # Generate some voxel data.
     voxel_size = v3i(Val(64))
     voxels = VoxelGrid(undef, voxel_size.data)
-    function voxel_func(pos::v3i)::Bool
+    function voxel_func(pos::v3i)::UInt8
         posf = (v3f(pos) + @f32(0.5)) / v3f(voxel_size - 1)
         @bpworld_assert posf isa v3f # Double-check the types work as expected
-        return (vdist(posf, v3f(0, 0, 0)) <= 0.55) ? 1 : 0
+
+        dist_to_blocks = vdist.(Ref(posf), tuple(
+            v3f(0.75, 0.75, 0.5),
+            v3f(0.25, 0.25, 0.25)
+        ))
+        # If near the first sphere, output a scifi block.
+        if dist_to_blocks[1] < 0.1
+            return 2
+         # If near the second sphere, output another scifi block.
+        elseif dist_to_blocks[2] < 0.185
+            return 3
+        # If near the edge of the sphere, keep it empty space.
+        elseif (dist_to_blocks[1] < 0.18) || (dist_to_blocks[2] < 0.25)
+            return 0
+        # Otherwise, throw some fun noise in there.
+        else
+            return (perlin(posf * 4.0) < 0.45) ? 1 : 0
+            return (posf.z < 0.1) ? 1 : 0
+        end
     end
     @threads for i in 1:length(voxels)
         pos = v3i(mod1(i, voxel_size.x),
@@ -166,7 +201,8 @@ function Scene(window::GLFW.Window, assets::Assets)
 
     check_gl_logs("After scene initialization")
     return Scene(
-        voxels, voxel_meshes, voxel_mesh_buffers,
+        voxels, voxel_assets,
+        voxel_meshes, voxel_mesh_buffers,
 
         Cam3D{Float32}(
             v3f(300, -100, 4000),
@@ -178,8 +214,8 @@ function Scene(window::GLFW.Window, assets::Assets)
         ),
         Cam3D_Settings{Float32}(
             move_speed = @f32(500),
-            move_speed_min = @f32(1),
-            move_speed_max = @f32(2000)
+            move_speed_min = @f32(50),
+            move_speed_max = @f32(1000)
         ),
         false, SceneInputs(window), @f32(0.0),
 
@@ -234,10 +270,6 @@ end
 function render(scene::Scene, assets::Assets)
     context::Context = get_context()
 
-    view_mat = cam_view_mat(scene.cam)
-    proj_mat = cam_projection_mat(scene.cam)
-    viewproj_mat = m_combine(view_mat, proj_mat)
-
     set_depth_writes(context, true)
 
     target_activate(scene.g_buffer)
@@ -248,7 +280,7 @@ function render(scene::Scene, assets::Assets)
 
     # Draw the voxels.
     for (i::Int, mesh::Mesh) in enumerate(scene.mesh_voxel_layers)
-        render_voxels(mesh, assets.voxel_layers[i],
+        render_voxels(mesh, scene.voxel_layers[i],
                       zero(v3f), v3f(Val(100)),
                       scene.cam, scene.total_seconds)
     end

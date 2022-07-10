@@ -107,6 +107,7 @@ vec3 microfacetLighting(vec3 normal, vec3 towardsCamera, vec3 towardsLight,
     vec3 totalLight = (((energyOfDiffuse / PI) * albedo) + specular) *
                       lightIrradiance * diffuseStrength;
 
+//return vec3(roughness);
     return totalLight;
 }
 

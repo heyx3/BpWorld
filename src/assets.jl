@@ -31,20 +31,14 @@ compile_shader_files(name_without_ext::AbstractString; kw...) = compile_shader_f
 ################
 
 mutable struct Assets
-    voxel_layers::Vector{Voxels.AssetRenderer}
-
     tex_quit_confirmation::Texture
 
     prog_lighting::Program
 end
 function Base.close(a::Assets)
-    for L in a.voxel_layers
-        close(L)
-    end
-
     # Try to close() everything that isnt specifically blacklisted.
     # This is the safest option to avoid leaks.
-    blacklist = tuple(:voxel_layers)
+    blacklist = tuple()
     whitelist = setdiff(fieldnames(typeof(a)), blacklist)
     for field in whitelist
         close(getfield(a, field))
@@ -76,16 +70,8 @@ function Assets()
     textures::Tuple = load_all_textures()
     shaders::Tuple = load_all_shaders()
 
-    # Hard-code the voxel assets to load for now.
-    voxel_assets = [
-        Voxels.AssetRenderer(JSON3.read(open(io -> read(io, String),
-                                             joinpath(VOXELS_ASSETS_PATH, "rocks", "rocks.json"),
-                                             "r"),
-                                        Voxels.AssetData))
-    ]
-
     check_gl_logs("After asset initialization")
-    return Assets(voxel_assets, textures..., shaders...)
+    return Assets(textures..., shaders...)
 end
 
 
@@ -137,8 +123,6 @@ function prepare_program_lighting( assets::Assets,
 end
 
 function reload_shaders(assets::Assets)
-    #TODO: Reload voxel assets too
-    
     # Is field enumeration order guaranteed?
     # It seems to work in the REPL.
     shaders = load_all_shaders()

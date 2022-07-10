@@ -16,6 +16,8 @@ struct AssetData
     # You can change the sampler to use here.
     # The textures are indexed by their uniform name here, not their file-name.
     samplers::Dict{AbstractString, Sampler{2}}
+    #TODO: Replace 'samplers' with a larger set of settings, like "include mips?"
+
 
     # Any #defines you want to add in the fragment shader.
     # The keys are the token names, and the values are the token values.

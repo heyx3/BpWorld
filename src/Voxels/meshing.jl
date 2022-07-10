@@ -72,7 +72,7 @@ function calculate_mesh(grid::VoxelGrid, layer::UInt8)::Tuple{Vector{VoxelVertex
             @set! voxel_idx[axis3] = plane_idx.y
 
             # For each filled voxel, draw its boundary with empty neighbors.
-            if grid[voxel_idx] == EMPTY_VOXEL
+            if grid[voxel_idx] != layer
                 continue
             end
 
