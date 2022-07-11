@@ -147,35 +147,32 @@ function Scene(window::GLFW.Window, assets::Assets)
     # Generate some voxel data.
     voxel_size = v3i(Val(64))
     voxels = VoxelGrid(undef, voxel_size.data)
-    function voxel_func(pos::v3i)::UInt8
-        posf = (v3f(pos) + @f32(0.5)) / v3f(voxel_size - 1)
-        @bpworld_assert posf isa v3f # Double-check the types work as expected
-
-        dist_to_blocks = vdist.(Ref(posf), tuple(
-            v3f(0.75, 0.75, 0.5),
-            v3f(0.25, 0.25, 0.25)
-        ))
-        # If near the first sphere, output a scifi block.
-        if dist_to_blocks[1] < 0.1
-            return 2
-         # If near the second sphere, output another scifi block.
-        elseif dist_to_blocks[2] < 0.185
-            return 3
-        # If near the edge of the sphere, keep it empty space.
-        elseif (dist_to_blocks[1] < 0.18) || (dist_to_blocks[2] < 0.25)
-            return 0
-        # Otherwise, throw some fun noise in there.
-        else
-            return (perlin(posf * 4.0) < 0.45) ? 1 : 0
-            return (posf.z < 0.1) ? 1 : 0
-        end
-    end
-    @threads for i in 1:length(voxels)
-        pos = v3i(mod1(i, voxel_size.x),
-                  mod1(i ÷ voxel_size.x, voxel_size.y),
-                  i ÷ (voxel_size.x * voxel_size.y))
-        @inbounds voxels[i] = voxel_func(pos)
-    end
+    voxel_terrain = Voxels.Generation.RidgedPerlin(
+        layer = 0x1,
+        threshold = @f32(0.2),
+        scale = v3f(4, 4, 2)
+    )
+    voxel_sphere1 = Voxels.Generation.VoxelSphere(
+        center = v3f(0.25, 0.25, 0.25),
+        radius = 0.185,
+        layer = 0x2
+    )
+    voxel_sphere2 = Voxels.Generation.VoxelSphere(
+        center = v3f(0.25, 0.25, 0.75),
+        radius = 0.3,
+        layer = 0x3
+    )
+    voxel_scene = Voxels.Generation.VoxelUnion(
+        Float32.([ 1.0, 2.0, 3.0 ]),
+        Voxels.Generation.VoxelDifference(
+            voxel_terrain,
+            @set(voxel_sphere1.radius *= 1.3),
+            @set(voxel_sphere2.radius *= 1.3)
+        ),
+        voxel_sphere1,
+        voxel_sphere2
+    )
+    Voxels.Generation.generate!(voxels, voxel_scene)
 
     # Set up the meshes for each voxel layer.
     n_layers::Int = max(maximum(voxels), 1)
@@ -206,7 +203,7 @@ function Scene(window::GLFW.Window, assets::Assets)
 
         Cam3D{Float32}(
             v3f(300, -100, 4000),
-            vnorm(v3f(1, 1, -0.8)),
+            vnorm(v3f(1.0, 1.0, -0.8)),
             get_up_vector(),
             Box_minmax(@f32(0.05), @f32(10000)),
             @f32(100),
