@@ -147,17 +147,28 @@ function Scene(window::GLFW.Window, assets::Assets)
     # Generate some voxel data.
     voxel_size = v3i(Val(64))
     voxels = VoxelGrid(undef, voxel_size.data)
-    voxel_terrain = Voxels.Generation.RidgedPerlin(
+    voxel_terrain = Voxels.Generation.VoxelField(
         layer = 0x1,
-        threshold = @f32(0.2),
-        scale = v3f(4, 4, 2)
+        threshold = @f32(0.3),
+        pos_scale = v3f(2, 2, 1),
+        field = Voxels.Generation.MathField(*,
+            Voxels.Generation.ConstField(0.5),
+            Voxels.Generation.MathField(+,
+                Voxels.Generation.OctaveNoise(
+                    Voxels.Generation.RidgedPerlin(),
+                    3
+                ),
+                Voxels.Generation.BillowedPerlin(5*one(v3f))
+            )
+        )
     )
-    voxel_sphere1 = Voxels.Generation.VoxelSphere(
-        center = v3f(0.25, 0.25, 0.25),
-        radius = 0.185,
-        layer = 0x2
+    voxel_shape1 = Voxels.Generation.VoxelBox(
+        0x2,
+        Box_minmax(v3f(Val(0.065)),
+                   v3f(Val(0.435))),
+        mode = Voxels.Generation.BoxModes.edges
     )
-    voxel_sphere2 = Voxels.Generation.VoxelSphere(
+    voxel_shape2 = Voxels.Generation.VoxelSphere(
         center = v3f(0.25, 0.25, 0.75),
         radius = 0.3,
         layer = 0x3
@@ -166,11 +177,17 @@ function Scene(window::GLFW.Window, assets::Assets)
         Float32.([ 1.0, 2.0, 3.0 ]),
         Voxels.Generation.VoxelDifference(
             voxel_terrain,
-            @set(voxel_sphere1.radius *= 1.3),
-            @set(voxel_sphere2.radius *= 1.3)
+            Voxels.Generation.VoxelBox(
+                voxel_shape1.layer,
+                Box_minmax(
+                    voxel_shape1.area.min / @f32(1.3),
+                    max_inclusive(voxel_shape1.area) * @f32(1.3)
+                )
+            ),
+            @set(voxel_shape2.radius *= 1.3)
         ),
-        voxel_sphere1,
-        voxel_sphere2
+        voxel_shape1,
+        voxel_shape2
     )
     Voxels.Generation.generate!(voxels, voxel_scene)
 
@@ -189,7 +206,7 @@ function Scene(window::GLFW.Window, assets::Assets)
             PrimitiveTypes.triangle,
             [ VertexDataSource(mesh_voxel_vertices, sizeof(VoxelVertex)) ],
             voxel_vertex_layout(1),
-            (mesh_voxel_indices, typeof(voxel_inds[1]))
+            (mesh_voxel_indices, eltype(voxel_inds))
         )
         push!(voxel_meshes, mesh_voxels)
     end
@@ -202,7 +219,7 @@ function Scene(window::GLFW.Window, assets::Assets)
         voxel_meshes, voxel_mesh_buffers,
 
         Cam3D{Float32}(
-            v3f(300, -100, 4000),
+            v3f(300, -300, 7000),
             vnorm(v3f(1.0, 1.0, -0.8)),
             get_up_vector(),
             Box_minmax(@f32(0.05), @f32(10000)),

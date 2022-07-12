@@ -40,25 +40,30 @@ Base.@kwdef struct VoxelBox{TMode<:Val} <: AbstractVoxelGenerator
     area::Box3Df
     layer::UInt8
     invert::Bool = false
-    mode::E_BoxModes # Convenient reference to TMode's compile-time constant value
-    #TODO: Replace 'surface_only' with an enum 'mode' that includes a wireframe mode.
 end
-function prepare_generation(b::VoxelBox, grid::VoxelGrid)::NTuple{2, v3u}
+@inline VoxelBox(layer, area; mode=BoxModes.filled, kw...) = VoxelBox{Val{mode}}(
+    layer=layer,
+    area=area,
+    kw...
+)
+box_mode(::VoxelBox{Val{T}}) where {T} = T
+function prepare_generation(b::VoxelBox, grid_size::v3u)::NTuple{2, v3u}
     # Compute the min and max voxels covered by this box.
-    voxel_scale = @f32(1) / vsize(grid)
-    voxel_area = Box3Df(area.min * voxel_scale,
-                        area.size * voxel_scale)
+    voxel_scale = convert(v3f, grid_size)
+    voxel_area = Box3Df(b.area.min * voxel_scale,
+                        b.area.size * voxel_scale)
     voxel_min::v3f = voxel_area.min + @f32(0.5)
     voxel_max::v3f = max_inclusive(voxel_area) - @f32(0.5)
-
+    
     to_bounds(f::Float32) = UInt32(floor(max(@f32(0), f)))
-    return (map(to_bounds, voxel_min), map(to_bounds, voxel_max))
+    return (map(to_bounds, voxel_min),
+            map(to_bounds, voxel_max))
 end
 function generate(b::VoxelBox{Val{TMode}}, idx::v3u, p::v3f, bounds::NTuple{2, v3u}) where {TMode}
     # Handle inversion.
     local inside_val::UInt8,
           outside_val::UInt8
-    if s.invert
+    if b.invert
         inside_val = EMPTY_VOXEL
         outside_val = b.layer
     else
@@ -66,18 +71,17 @@ function generate(b::VoxelBox{Val{TMode}}, idx::v3u, p::v3f, bounds::NTuple{2, v
         outside_val = EMPTY_VOXEL
     end
 
-    is_inside::Bool = if TMode == BoxModes.filled
-        all(idx >= bounds[1]) && all(idx <= bounds[2])
-    else
+    is_inside::Bool = all(idx >= bounds[1]) && all(idx <= bounds[2])
+    if is_inside && (TMode != BoxModes.filled)
         # Count the number of axes along which the position is on the box's edge.
         # Try to induce the compiler to unroll the loop.
         n_axes_on_edge::Int = count(tuple((
             (idx[i] == bounds[1][i]) || (idx[i] == bounds[2][i])
               for i in 1:3
         )...))
-        @bpworld_assert(n_axes_on_edge in 1:3, n_axes_on_edge)
+        @bpworld_assert(n_axes_on_edge in 0:3, n_axes_on_edge)
 
-        if TMode == BoxModes.surface
+        is_inside = if TMode == BoxModes.surface
             n_axes_on_edge >= 1
         elseif TMode == BoxModes.edges
             n_axes_on_edge >= 2
@@ -91,4 +95,4 @@ function generate(b::VoxelBox{Val{TMode}}, idx::v3u, p::v3f, bounds::NTuple{2, v
     return is_inside ? inside_val : outside_val
 end
 
-#TODO: More shapes (capsule, plane, disc)
+#TODO: More shapes (capsule, plane, disc, grid)

@@ -18,7 +18,7 @@ abstract type AbstractVoxelGenerator end
 Pre-computes some data that can be used when placing a group of voxels.
 This part does not have to be thread-safe.
 "
-prepare_generation(g::AbstractVoxelGenerator, grid::VoxelGrid) = nothing
+prepare_generation(g::AbstractVoxelGenerator, grid_size::v3u) = nothing
 
 "
 Computes the voxel at the given part of the voxel grid.
@@ -48,7 +48,7 @@ function generate!(grid::VoxelGrid, generator::T,
                    bounds::Box3Du = Box_minsize(convert(v3u, one(v3u)),
                                                 convert(v3u, vsize(grid)))
                   ) where {T<:AbstractVoxelGenerator}
-    prep_data = prepare_generation(generator, grid)
+    prep_data = prepare_generation(generator, convert(v3u, vsize(grid)))
     texel::v3f = @f32(1) / vsize(grid)
 
     # Put each Z slice in its own task.

@@ -17,7 +17,10 @@ end
         children
     )
 end
-prepare_generation(u::VoxelUnion, grid::VoxelGrid) = prepare_generation.(u.children, Ref(grid))
+prepare_generation(u::VoxelUnion, grid_size::v3u) = tuple((
+    prepare_generation(child, grid_size)
+        for child in u.children
+)...)
 function generate(u::VoxelUnion, i::v3u, p::v3f, prep_data::Tuple)
     # Get the value for each child.
     #TODO: Check that this loop gets unrolled. If not, we'll probably need a @generated instead
@@ -44,7 +47,10 @@ struct VoxelDifference{TMain<:AbstractVoxelGenerator, TGeneratorTuple<:Tuple} <:
 end
 VoxelDifference(main, to_subtract...; to_ignore = Set{UInt8}()) = VoxelDifference{typeof(main), typeof(to_subtract)}(main, to_subtract, to_ignore)
 VoxelDifference(main, to_subtract::Tuple, to_ignore = Set{UInt8}()) = VoxelDifference{typeof(main), typeof(to_subtract)}(main, to_subtract, to_ignore)
-prepare_generation(u::VoxelDifference, grid::VoxelGrid) = prepare_generation.((u.main, u.subtractors...), Ref(grid))
+prepare_generation(u::VoxelDifference, grid_size::v3u) = tuple((
+    prepare_generation(child, grid_size)
+        for child in tuple(u.main, u.subtractors...)
+)...)
 @generated function generate( u::VoxelDifference{M, S},
                               i::v3u, p::v3f,
                               prep_data::P
@@ -77,7 +83,10 @@ struct VoxelIntersection{TChildrenTuple<:Tuple} <: AbstractVoxelGenerator
     children::TChildrenTuple # A statically-typed tuple of each generator in this operation.
 end
 VoxelIntersection(children...) = VoxelIntersection{typeof(children)}(children)
-prepare_generation(vi::VoxelIntersection, grid::VoxelGrid) = prepare_generation.(vi.children, Ref(grid))
+prepare_generation(vi::VoxelIntersection, grid_size::v3u) = tuple((
+    prepare_generation(child, grid_size)
+        for child in vi.children
+)...)
 @generated function generate( u::VoxelIntersection{C},
                               i::v3u, p::v3f,
                               prep_data::P
