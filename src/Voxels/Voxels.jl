@@ -13,6 +13,10 @@ module Voxels
     const VoxelGrid = Array{UInt8, 3}
     const EMPTY_VOXEL = zero(UInt8)
 
+    # Early exports are needed for sub-modules.
+    export VOXELS_ASSETS_PATH, VoxelGrid, EMPTY_VOXEL
+    include("Generation/Generation.jl")
+
     include("asset.jl")
     include("meshing.jl")
 

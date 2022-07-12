@@ -87,9 +87,9 @@ function calculate_mesh(grid::VoxelGrid, layer::UInt8)::Tuple{Vector{VoxelVertex
                 first_idx = UInt32(length(vertices))
 
                 a = voxel_idx
-                b = @set a[axis2] += 1
-                c = @set b[axis3] += 1
-                d = @set a[axis3] += 1
+                b = @set a[axis2] += one(Int32)
+                c = @set b[axis3] += one(Int32)
+                d = @set a[axis3] += one(Int32)
 
                 push!(vertices, VoxelVertex.(
                     (a, b, c, d),

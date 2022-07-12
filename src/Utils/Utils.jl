@@ -1,16 +1,29 @@
 module Utils
 
-using Setfield, Base.Threads, StructTypes, JSON3
+using Setfield, Base.Threads,
+      Suppressor, StructTypes, JSON3
 using GLFW, ModernGL, CImGui,
       ImageIO, FileIO, ColorTypes, FixedPointNumbers, ImageTransformations
 using Bplus,
       Bplus.Utilities, Bplus.Math, Bplus.GL,
       Bplus.Helpers, Bplus.SceneTree, Bplus.Input
+#
 
 
 "Asserts for this specific project: `@bpworld_assert`, `@bpworld_debug`."
 @make_toggleable_asserts bpworld_
-bpworld_asserts_enabled() = false
+@assert bpworld_asserts_enabled() == false
+
+"
+Removes the type declaration.
+This allows you to make a 'default' implementation that explicitly lists types,
+    but still doesn't risk ambiguity with more specific overloads.
+"
+macro omit_type(var_decl)
+    @assert(Meta.isexpr(var_decl, :(::)) && isa(var_decl.args[1], Symbol),
+            "Expected a typed variable declaration, got: $var_decl")
+    return esc(var_decl.args[1])
+end
 
 
 "Checks and prints any messages/errors from OpenGL. Does nothing in release mode."
@@ -155,7 +168,7 @@ function load_tex( full_path::AbstractString,
     tex_size = raw_tex_size.yx
     pixels = Matrix{TOutPixel}(undef, tex_size.data)
     for p_out::v2i in 1:v2i(tex_size)
-        p_in = v2i(tex_size.y - p_out.y + 1, p_out.x)
+        p_in = v2i(tex_size.y - p_out.y + Int32(1), p_out.x)
         pixels[p_out] = converter(pixels_raw[p_in], TOutPixel)
     end
 
@@ -164,6 +177,7 @@ end
 
 
 export @bpworld_assert, @bpworld_debug,
+       @omit_type,
        check_gl_logs,
        ASSETS_PATH, process_shader_contents,
        pixel_converter, load_tex
