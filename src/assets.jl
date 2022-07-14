@@ -10,8 +10,16 @@ end
 Compiles a shader for this project, handling `#include`s (crudely; relative to 'assets' folder)
     and applying `SHADER_CUTOFF_TOKEN`.
 "
-compile_shaders(vert::AbstractString, frag::AbstractString; kw...) = begin
-    return Program(process_shader_contents.((vert, frag))...; kw...)
+function compile_shaders( vert::AbstractString, frag::AbstractString
+                          ;
+                          insert_above_code::AbstractString = "",
+                          program_kw...
+                        )
+    return Program(
+        process_shader_contents(vert, insert_above_code),
+        process_shader_contents(frag, insert_above_code),
+        ; program_kw...
+    )
 end
 "An alternative to `compile_shaders()` that takes file paths instead of shader text"
 compile_shader_files(vert::AbstractString, frag::AbstractString; kw...) = compile_shaders(
@@ -62,6 +70,9 @@ function load_all_shaders()::Tuple
     return tuple(
         compile_shader_files("post_processing/quad.vert",
                              "post_processing/lighting.frag",
+                             insert_above_code = """
+                                #define FRAGMENT_DIR 1
+                             """,
                              flexible_mode = true)
     )
 end
@@ -93,9 +104,20 @@ function prepare_program_lighting( assets::Assets,
                                    tex_surface::Texture,
                                    light_dir::v3f,
                                    light_emission::vRGBf,
-                                   cam::Cam3D
+                                   cam::Cam3D,
+                                   fog_density::Float32,
+                                   fog_dropoff::Float32,
+                                   fog_color::vRGBf,
+                                   fog_height_offset::Float32,
+                                   fog_height_scale::Float32
                                  )
+    mat_proj = cam_projection_mat(cam)
+    mat_inv_view_proj = m_invert(m_combine(cam_view_mat(cam), mat_proj))
     for uniforms in tuple(
+        # For the vertex shader:
+        ("u_mat_dirProjection", mat_inv_view_proj),
+        ("u_camPosForDir", cam.pos),
+
         ("u_gBuffer.depth", get_view(tex_depth, G_BUFFER_SAMPLER)),
         ("u_gBuffer.colors", get_view(tex_colors, G_BUFFER_SAMPLER)),
         ("u_gBuffer.normals", get_view(tex_normals, G_BUFFER_SAMPLER)),
@@ -104,14 +126,21 @@ function prepare_program_lighting( assets::Assets,
         ("u_sunlight.dir", light_dir),
         ("u_sunlight.emission", light_emission),
 
+        ("u_fog.density", fog_density),
+        ("u_fog.dropoff", fog_dropoff),
+        ("u_fog.color", fog_color),
+        ("u_fog.heightOffset", fog_height_offset),
+        ("u_fog.heightScale", fog_height_scale),
+
         ("u_camera.pos", cam.pos),
         ("u_camera.nearClip", cam.clip_range.min),
         ("u_camera.farClip", max_inclusive(cam.clip_range)),
         ("u_camera.forward", cam.forward),
         ("u_camera.up", cam.up),
         ("u_camera.right", cam_rightward(cam)),
-        ("u_camera.invViewProjMat", m_invert(m_combine(cam_view_mat(cam),
-                                                       cam_projection_mat(cam)))),
+
+        ("u_camera.projectionMat", mat_proj),
+        ("u_camera.invViewProjMat", mat_inv_view_proj),
     )
         set_uniform(assets.prog_lighting, uniforms...)
     end

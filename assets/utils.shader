@@ -114,9 +114,25 @@ float linearizedDepth(float renderedDepth, float zNear, float zFar)
     return (2.0 * zNear * zFar) / ((zFar + zNear) - (z * (zFar - zNear)));
 }
 
-//Applies a world matrix (i.e. nothing weird like skew) to a direction,
+//Applies a world matrix (i.e. nothing weird like projection/skew) to a direction,
 //    ignoring the translation component.
 vec3 transformDir(vec3 dir, mat4 transform)
 {
     return (transform * vec4(dir, 0.0)).xyz;
+}
+
+//Recreates world-space position from a fragment's depth, given some world-space data.
+//Also returns the distance between the camera and fragment, in the W channel.
+vec4 positionFromDepth(mat4 projectionMatrix,
+                       vec3 camPos, vec3 camForward,
+                       vec3 normalizedDirToFragment,
+                       float bufferDepth)
+{
+    //Reference: https://mynameismjp.wordpress.com/2010/09/05/position-from-depth-3/
+    //           https://cs.gmu.edu/~jchen/cs662/fog.pdf
+
+    float rawDepth = -1.0 + (2.0 * bufferDepth);
+    float viewZ = projectionMatrix[3][2] / (rawDepth + projectionMatrix[2][2]);
+    float distToCam = viewZ / dot(normalizedDirToFragment, camForward);
+    return vec4((normalizedDirToFragment * distToCam) - camPos, distToCam);
 }

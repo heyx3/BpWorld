@@ -219,17 +219,17 @@ function Scene(window::GLFW.Window, assets::Assets)
         voxel_meshes, voxel_mesh_buffers,
 
         Cam3D{Float32}(
-            v3f(300, -300, 7000),
+            v3f(30, -30, 700),
             vnorm(v3f(1.0, 1.0, -0.8)),
             get_up_vector(),
-            Box_minmax(@f32(0.05), @f32(10000)),
+            Box_minmax(@f32(0.05), @f32(1000)),
             @f32(100),
             @f32(window_size.x / window_size.y)
         ),
         Cam3D_Settings{Float32}(
-            move_speed = @f32(500),
-            move_speed_min = @f32(50),
-            move_speed_max = @f32(1000)
+            move_speed = @f32(50),
+            move_speed_min = @f32(5),
+            move_speed_max = @f32(100)
         ),
         false, SceneInputs(window), @f32(0.0),
 
@@ -295,7 +295,7 @@ function render(scene::Scene, assets::Assets)
     # Draw the voxels.
     for (i::Int, mesh::Mesh) in enumerate(scene.mesh_voxel_layers)
         render_voxels(mesh, scene.voxel_layers[i],
-                      zero(v3f), v3f(Val(100)),
+                      zero(v3f), v3f(Val(10)),
                       scene.cam, scene.total_seconds)
     end
 end
