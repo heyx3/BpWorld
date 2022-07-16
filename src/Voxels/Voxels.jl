@@ -23,5 +23,5 @@ module Voxels
     export VOXELS_ASSETS_PATH,
            VoxelGrid,
            VoxelVertex, unpack_vertex, voxel_vertex_layout,
-           calculate_mesh, render_voxels
+           calculate_mesh, render_voxels, render_voxels_depth_only
 end

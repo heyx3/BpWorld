@@ -42,6 +42,7 @@ mutable struct Assets
     tex_quit_confirmation::Texture
 
     prog_lighting::Program
+    prog_voxels_depth_only::Voxels.LayerDepthRenderer
 end
 function Base.close(a::Assets)
     # Try to close() everything that isnt specifically blacklisted.
@@ -80,9 +81,10 @@ end
 function Assets()
     textures::Tuple = load_all_textures()
     shaders::Tuple = load_all_shaders()
+    voxels_depth_only = Voxels.LayerDepthRenderer()
 
     check_gl_logs("After asset initialization")
-    return Assets(textures..., shaders...)
+    return Assets(textures..., shaders..., voxels_depth_only)
 end
 
 
@@ -104,15 +106,28 @@ function prepare_program_lighting( assets::Assets,
                                    tex_surface::Texture,
                                    light_dir::v3f,
                                    light_emission::vRGBf,
-                                   cam::Cam3D,
+                                   light_shadowmap::Texture,
+                                   light_shadow_bias::Float32,
+                                   light_viewproj::fmat4,
+                                   cam::Cam3D, #TODO: Have the camera store and update its own view/projection/etc every "tick"
                                    fog_density::Float32,
                                    fog_dropoff::Float32,
                                    fog_color::vRGBf,
                                    fog_height_offset::Float32,
-                                   fog_height_scale::Float32
+                                   fog_height_scale::Float32,
                                  )
     mat_proj = cam_projection_mat(cam)
     mat_inv_view_proj = m_invert(m_combine(cam_view_mat(cam), mat_proj))
+
+    # The light's view-projection matrix brings it into NDC space, -1 to +1.
+    # We need to take it one step further, into "texel" space, 0 to 1.
+    # This includes the Z value, since the depth texture normalizes depth to that range.
+    mat_world_to_light_texel = m_combine(
+        light_viewproj,
+        m_scale(v4f(0.5, 0.5, 0.5, 1.0)),
+        m4_translate(v3f(0.5, 0.5, 0.5))
+    )
+
     for uniforms in tuple(
         # For the vertex shader:
         ("u_mat_dirProjection", mat_inv_view_proj),
@@ -125,6 +140,9 @@ function prepare_program_lighting( assets::Assets,
 
         ("u_sunlight.dir", light_dir),
         ("u_sunlight.emission", light_emission),
+        ("u_sunlight.shadowmap", light_shadowmap),
+        ("u_sunlight.shadowBias", light_shadow_bias),
+        ("u_sunlight.worldToTexelMat", mat_world_to_light_texel),
 
         ("u_fog.density", fog_density),
         ("u_fog.dropoff", fog_dropoff),

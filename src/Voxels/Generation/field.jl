@@ -57,7 +57,7 @@ Base.@kwdef struct Perlin{TInModifier, TOutModifier} <: AbstractField
     output_modifier::TOutModifier = (pos::v3f, field::Float32) -> field
 end
 "Standard Perlin noise"
-Perlin(scale::v3f = one(v3f); kw...) = Perlin(scale=scale, kw...)
+Perlin(scale::v3f; kw...) = Perlin(scale=scale, kw...)
 "Perlin noise with sharp ridges"
 RidgedPerlin(scale::v3f = one(v3f); kw...) = Perlin(;
     scale=scale,

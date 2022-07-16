@@ -20,6 +20,9 @@ struct DirectionalLight
 {
     vec3 dir;
     vec3 emission;
+    sampler2DShadow shadowmap;
+    float shadowBias;
+    mat4 worldToTexelMat;
 };
 uniform DirectionalLight u_sunlight;
 
@@ -128,6 +131,7 @@ out vec4 fOut_color; //RGB = color (in HDR). A = (0 if sky, 1 otherwise)
 
 
 void main() {
+
     //Read and unpack the color texture.
     vec4 colorRead = textureLod(u_gBuffer.colors, fIn_uv, 0.0);
     vec3 albedo = colorRead.rgb,
@@ -170,7 +174,7 @@ void main() {
     float NEW_worldDist = NEW_worldPosData.w;
 
 //DEBUG: optionally use the newer, faster calculation for world-space position.
-if (false) { //TODO: Test this stuff
+if (false) { //TODO: Debug this stuff
 // fOut_color = vec4(vec3(
 //                     distance(NEW_worldDist, worldDist) / 1.0
 //                     //fract(worldPos * 0.01)
@@ -196,11 +200,19 @@ if (false) { //TODO: Test this stuff
           roughness = surfaceRead.g;
 
     //Compute lighting.
+    //Surface model:
     vec3 surfaceLight = microfacetLighting(
         normal, -camTowardsPos, -u_sunlight.dir,
         u_sunlight.emission,
         albedo, metallic, roughness
     );
+    //Shadow-maps:
+    vec3 shadowMapWorldPos = worldPos - (u_sunlight.dir * u_sunlight.shadowBias);
+    vec4 shadowmapTexel4 = u_sunlight.worldToTexelMat * vec4(shadowMapWorldPos, 1);
+    vec3 shadowmapTexel = shadowmapTexel4.xyz / shadowmapTexel4.w;
+    float shadowMask = texture(u_sunlight.shadowmap, shadowmapTexel).r;
+    surfaceLight *= shadowMask;
+    //Ambient:
     surfaceLight += ambientLighting(worldPos, normal, albedo);
 
     //TODO: Emissive

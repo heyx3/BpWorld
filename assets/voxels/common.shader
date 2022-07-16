@@ -6,8 +6,6 @@
 uniform vec3 u_camPos, u_camForward, u_camUp;
 uniform float u_totalSeconds;
 
-//TODO: Other useful uniforms like "elapsed time"
-
 
 in vec3 fIn_worldPos;
 in vec3 fIn_voxelPos;

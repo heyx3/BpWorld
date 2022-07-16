@@ -22,16 +22,26 @@ function render(view::PostProcess, window::GLFW.Window, assets::Assets, scene::S
     resources::CResources = get_resources(context)
 
     target_activate(nothing)
-    prepare_program_lighting(assets, scene.target_tex_depth, scene.target_tex_color,
-                                     scene.target_tex_normals, scene.target_tex_surface,
-                                     vnorm(v3f(1, 1, -1)), one(v3f)*1, scene.cam,
-                                     @f32(0.0084), @f32(1), vRGBf(0.5, 0.5, 1.0),
-                                     @f32(430), @f32(0.01))
+    prepare_program_lighting(assets,
+        scene.target_tex_depth, scene.target_tex_color,
+        scene.target_tex_normals, scene.target_tex_surface,
+
+        scene.sun_dir, scene.sun_light,
+        scene.target_tex_shadowmap, @f32(10),
+        scene.sun_viewproj,
+
+        scene.cam,
+
+        @f32(0.0084), @f32(1), vRGBf(0.5, 0.5, 1.0),
+        @f32(430), @f32(0.01)
+    )
+    view_activate(get_view(scene.target_tex_shadowmap))
     view_activate(get_view(scene.target_tex_depth, G_BUFFER_SAMPLER))
     view_activate(get_view(scene.target_tex_color, G_BUFFER_SAMPLER))
     view_activate(get_view(scene.target_tex_normals, G_BUFFER_SAMPLER))
     view_activate(get_view(scene.target_tex_surface, G_BUFFER_SAMPLER))
     GL.render_mesh(context, resources.screen_triangle, assets.prog_lighting)
+    view_deactivate(get_view(scene.target_tex_shadowmap))
     view_deactivate(get_view(scene.target_tex_depth, G_BUFFER_SAMPLER))
     view_deactivate(get_view(scene.target_tex_color, G_BUFFER_SAMPLER))
     view_deactivate(get_view(scene.target_tex_normals, G_BUFFER_SAMPLER))
