@@ -1,8 +1,8 @@
 module Utils
 
 using Setfield, Base.Threads,
-      Suppressor, StructTypes, JSON3
-using GLFW, ModernGL, LibCImGui, CImGui,
+      Suppressor, StructTypes, JSON3, CSyntax
+using GLFW, ModernGL, CImGui,
       ImageIO, FileIO, ColorTypes, FixedPointNumbers, ImageTransformations
 using Bplus,
       Bplus.Utilities, Bplus.Math, Bplus.GL,
@@ -57,6 +57,8 @@ export @bpworld_assert, @bpworld_debug,
        check_gl_logs,
        ASSETS_PATH, process_shader_contents,
        pixel_converter, load_tex,
-       service_gui_init, service_gui_new_frame
+       service_gui_init, service_gui_get,
+          service_gui_start_frame, service_gui_end_frame,
+          gui_tex
 
 end

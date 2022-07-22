@@ -359,7 +359,13 @@ function render(scene::Scene, assets::Assets)
     mat_cam_inv_proj::fmat4 = m_invert(mat_cam_proj)
     mat_cam_inv_viewproj::fmat4 = m_invert(mat_cam_viewproj)
 
+    # Set up render state.
     set_depth_writes(context, true) # Needed to clear the depth buffer
+    set_color_writes(context, vRGBA{Bool}(true, true, true, true))
+    set_blending(context, make_blend_opaque(BlendStateRGBA))
+    set_culling(context, FaceCullModes.Off)
+    set_depth_test(context, ValueTests.LessThan)
+    set_scissor(context, nothing)
 
     # Clear the G-buffer.
     target_activate(scene.g_buffer)
