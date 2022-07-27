@@ -22,6 +22,9 @@ function render(view::PostProcess, window::GLFW.Window, assets::Assets, scene::S
     resources::CResources = get_resources(context)
 
     target_activate(nothing)
+    render_clear(context, GL.Ptr_Target(), v4f(1, 0, 1, 0))
+    render_clear(context, GL.Ptr_Target(), @f32(1))
+
     prepare_program_lighting(assets,
         scene.target_tex_depth, scene.target_tex_color,
         scene.target_tex_normals, scene.target_tex_surface,

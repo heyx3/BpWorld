@@ -167,6 +167,7 @@ function prepare_program_lighting( assets::Assets,
     set_depth_writes(false)
     set_depth_test(ValueTests.Pass)
     set_blending(make_blend_opaque(BlendStateRGBA))
+    set_scissor(nothing)
 end
 
 function reload_shaders(assets::Assets)

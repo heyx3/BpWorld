@@ -20,7 +20,7 @@ include("post_process.jl")
 
 
 function main()
-    bp_gl_context(v2i(1500, 900), "B+ World",
+    bp_gl_context(v2i(1600, 900), "B+ World",
                   vsync=VsyncModes.On,
                   debug_mode=@bpworld_debug(),
                   glfw_hints = Dict{Int32, Int32}(
@@ -38,13 +38,17 @@ function main()
         last_time_ns = time_ns()
         delta_seconds::Float32 = zero(Float32)
         is_quit_confirming::Bool = false
+        frame_idx::UInt = zero(UInt)
 
         GLFW.SetWindowSizeCallback(window, (wnd, new_x, new_y) -> begin
             on_window_resized(scene, wnd, v2i(new_x, new_y))
         end)
 
+        gui_service = service_gui_init(context)
+
         while !GLFW.WindowShouldClose(window)
             check_gl_logs("Top of loop")
+            GLFW.PollEvents()
             window_size::v2i = get_window_size(context)
 
             # Update/render the scene.
@@ -71,17 +75,26 @@ function main()
             end
 
             # Finish the frame.
+            service_gui_start_frame(gui_service)
+            CImGui.ShowDemoWindow()
+            service_gui_end_frame(gui_service, context)
             GLFW.SwapBuffers(window)
-            GLFW.PollEvents()
 
             # Update timing.
             now_time_ns = time_ns()
             delta_seconds = (now_time_ns - last_time_ns) / Float32(1e9)
             last_time_ns = now_time_ns
+
             # Wait, for a consistent framerate that doesn't burn cycles.
             wait_time = (1/60) - delta_seconds
             if wait_time >= 0.001
                 sleep(wait_time)
+            end
+
+            # Force-show the window after precompilation is done.
+            frame_idx += 1
+            if frame_idx <= 10
+                GLFW.ShowWindow(window)
             end
         end
 
