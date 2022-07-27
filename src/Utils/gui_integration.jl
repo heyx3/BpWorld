@@ -158,6 +158,21 @@ const IMGUI_KEY_TO_GLFW = Dict(
     # CImGui.ImGuiKey_F12 => GLFW.KEY_F12
 )
 
+ #TODO: Is it more performant to keep the CImGui mesh data on the CPU?
+const KEEP_MESH_DATA_ON_CPU = false
+gui_generate_mesh(verts::Buffer, indices::Buffer) = Mesh(
+    PrimitiveTypes.triangle,
+    [ VertexDataSource(verts, sizeof(CImGui.ImDrawVert)) ],
+    # The vertex data is interleaved, and equivalent to the struct CImGui.ImDrawVert.
+    map(zip(1:3, [ VertexData_FVector(2, Float32),
+                   VertexData_FVector(2, Float32),
+                   VertexData_FVector(4, UInt8, true) ])
+       ) do (i, v_type)
+        return VertexAttribute(1, fieldoffset(CImGui.ImDrawVert, i), v_type)
+    end,
+    (indices, CImGui.ImDrawIdx)
+)
+
 const CLIPBOARD_BUFFER = Vector{UInt8}(undef, 1024)
 function gui_clipboard_get(::Ptr{Cvoid})::String
     clipboard_raw = clipboard()
@@ -202,135 +217,26 @@ function service_gui_init( context::Bplus.GL.Context
         end
         IM_GUI_CONTEXT_COUNTER[] += 1
     end
-    CImGui.StyleColorsDark() #TODO: Try removing
+    @assert(IM_GUI_CONTEXT_REF[] != C_NULL)
     gui_io::Ptr{CImGui.ImGuiIO} = CImGui.GetIO()
     gui_fonts::Ptr{CImGui.ImFontAtlas} = gui_io.Fonts
-    # CImGui.ImFontAtlas_AddFontDefault(gui_fonts, C_NULL)
-
-    # Create renderer assets.
-    render_program = bp_glsl"""
-    #START_VERTEX
-        layout (location = 0) in vec2 vIn_pos;
-        layout (location = 1) in vec2 vIn_uv;
-        layout (location = 2) in vec4 vIn_color;
-
-        uniform mat4 u_transform;
-
-        out vec2 fIn_uv;
-        out vec4 fIn_color;
-
-        void main() {
-            fIn_uv = vIn_uv;
-            fIn_color = vIn_color;
-            gl_Position = u_transform * vec4(vIn_pos, 0, 1);
-        }
-
-    #START_FRAGMENT
-        in vec2 fIn_uv;
-        in vec4 fIn_color;
-
-        uniform sampler2D u_texture;
-
-        layout (location = 0) out vec4 fOut_color;
-
-        void main() {
-            fOut_color = fIn_color * texture(u_texture, fIn_uv);
-        }
-    """
-    # Font texture data comes from querying the ImGUI's IO structure.
-    font_pixels = Ptr{Cuchar}(C_NULL)
-    font_size_x = Cint(-1)
-    font_size_y = Cint(-1)
-    @c CImGui.GetTexDataAsRGBA32(gui_fonts, &font_pixels, &font_size_x, &font_size_y)
-    font_pixels_casted = Ptr{vRGBAu8}(font_pixels)
-    font_pixels_managed = unsafe_wrap(Matrix{vRGBAu8}, font_pixels_casted,
-                                      (font_size_y, font_size_x))
-    font_texture = Texture(
-        SimpleFormat(FormatTypes.normalized_uint,
-                     SimpleFormatComponents.RGBA,
-                     SimpleFormatBitDepths.B8),
-        font_pixels_managed,
-        sampler = Sampler{2}(
-            wrapping = WrapModes.clamp
-        )
-    )
-    # Mesh vertex/index data is generated procedurally, into a single mesh object.
-    KEEP_MESH_DATA_ON_CPU::Bool = false #TODO: Is it more performant to keep the CImGui mesh data on the CPU?
-    buffer_vertices = Buffer(sizeof(CImGui.ImDrawVert) * initial_vertex_capacity,
-                             true, KEEP_MESH_DATA_ON_CPU)
-    buffer_indices = Buffer(sizeof(CImGui.ImDrawIdx) * initial_index_capacity,
-                            true, KEEP_MESH_DATA_ON_CPU)
-    mesh = Mesh(
-        PrimitiveTypes.triangle,
-        [ VertexDataSource(buffer_vertices, sizeof(CImGui.ImDrawVert)) ],
-        # The vertex data is interleaved, and equivalent to the struct CImGui.ImDrawVert.
-        map(zip(1:3, [ VertexData_FVector(2, Float32),
-                       VertexData_FVector(2, Float32),
-                       VertexData_FVector(4, UInt8, true) ])
-           ) do (i, v_type)
-            return VertexAttribute(1, fieldoffset(CImGui.ImDrawVert, i), v_type)
-        end,
-        (buffer_indices, CImGui.ImDrawIdx)
-    )
-
-    # Create the service instance.
-    FONT_TEXTURE_ID = CImGui.ImTextureID(1)
-    serv = GuiService(
-        window = context.window,
-
-        render_program = render_program,
-        font_texture = font_texture,
-        buffer_vertices = buffer_vertices,
-        buffer_indices = buffer_indices,
-        buffer = mesh,
-
-        user_textures_by_handle = Dict{CImGui.ImTextureID,
-                                       Union{GL.Texture, GL.View}}(
-            FONT_TEXTURE_ID => font_texture
-        ),
-        user_texture_handles = Dict{Union{GL.Texture, GL.View},
-                                    CImGui.ImTextureID}(
-            font_texture => FONT_TEXTURE_ID
-        ),
-        max_tex_handle = FONT_TEXTURE_ID,
-        next_tex_handle_to_prune = FONT_TEXTURE_ID
-    )
-    CImGui.SetTexID(gui_fonts, FONT_TEXTURE_ID)
+    CImGui.AddFontDefault(gui_fonts)
 
     # Report capabilities to CImGUI.
+    gui_io.BackendPlatformName = "bplus_glfw"
     gui_io.BackendFlags |= CImGui.ImGuiBackendFlags_HasMouseCursors
     gui_io.BackendFlags |= CImGui.ImGuiBackendFlags_HasSetMousePos
-    gui_io.BackendFlags |= CImGui.ImGuiBackendFlags_RendererHasVtxOffset
-    gui_io.BackendPlatformName = "bplus_glfw"
     gui_io.BackendRendererName = "bplus_GL"
-
-    # Set up the clipboard.
-    gui_io.GetClipboardTextFn = GUI_CLIPBOARD_GET
-    gui_io.SetClipboardTextFn = GUI_CLIPBOARD_SET
+    gui_io.BackendFlags |= CImGui.ImGuiBackendFlags_RendererHasVtxOffset
 
     # Set up keybindings.
     for (imgui_key, glfw_key) in IMGUI_KEY_TO_GLFW
         CImGui.Set_KeyMap(gui_io, imgui_key, glfw_key)
     end
 
-    # Configure the cursors to use.
-    cursors = [
-        (CImGui.ImGuiMouseCursor_Arrow, GLFW.ARROW_CURSOR),
-        (CImGui.ImGuiMouseCursor_TextInput, GLFW.IBEAM_CURSOR),
-        (CImGui.ImGuiMouseCursor_ResizeNS, GLFW.VRESIZE_CURSOR),
-        (CImGui.ImGuiMouseCursor_ResizeEW, GLFW.HRESIZE_CURSOR),
-        (CImGui.ImGuiMouseCursor_Hand, GLFW.HAND_CURSOR),
-        # In GLFW 3.4, there are new cursor images we could use.
-        # However, that version isn't supported.
-        (CImGui.ImGuiMouseCursor_ResizeAll, GLFW.ARROW_CURSOR), # GLFW.RESIZE_ALL_CURSOR
-        (CImGui.ImGuiMouseCursor_ResizeNESW, GLFW.ARROW_CURSOR), # GLFW.RESIZE_NESW_CURSOR
-        (CImGui.ImGuiMouseCursor_ResizeNWSE, GLFW.ARROW_CURSOR), # GLFW.RESIZE_NWSE_CURSOR
-        (CImGui.ImGuiMouseCursor_NotAllowed, GLFW.ARROW_CURSOR) # GLFW.NOT_ALLOWED_CURSOR
-    ]
-    for (slot, type) in cursors
-        # Remember that the libraries specify things in 0-based indices.
-        serv.mouse_cursors[slot + 1] = GLFW.CreateStandardCursor(type)
-    end
+    # Set up the clipboard.
+    gui_io.GetClipboardTextFn = GUI_CLIPBOARD_GET
+    gui_io.SetClipboardTextFn = GUI_CLIPBOARD_SET
 
     # Tell ImGui how to manipulate/query data.
     GLFW.SetCharCallback(context.window, (window::GLFW.Window, c::Char) -> begin
@@ -392,6 +298,105 @@ function service_gui_init( context::Bplus.GL.Context
         end
         return nothing
     end)
+
+    # Create renderer assets.
+    render_program = bp_glsl"""
+    #START_VERTEX
+        layout (location = 0) in vec2 vIn_pos;
+        layout (location = 1) in vec2 vIn_uv;
+        layout (location = 2) in vec4 vIn_color;
+
+        uniform mat4 u_transform;
+
+        out vec2 fIn_uv;
+        out vec4 fIn_color;
+
+        void main() {
+            fIn_uv = vIn_uv;
+            fIn_color = vIn_color;
+
+            vec4 pos = u_transform * vec4(vIn_pos, 0, 1);
+            gl_Position = vec4(pos.x, pos.y, pos.zw);
+        }
+
+    #START_FRAGMENT
+        in vec2 fIn_uv;
+        in vec4 fIn_color;
+
+        uniform sampler2D u_texture;
+
+        layout (location = 0) out vec4 fOut_color;
+
+        void main() {
+            fOut_color = fIn_color * texture(u_texture, fIn_uv);
+        }
+    """
+    # Font texture data comes from querying the ImGUI's IO structure.
+    font_pixels = Ptr{Cuchar}(C_NULL)
+    font_size_x = Cint(-1)
+    font_size_y = Cint(-1)
+    @c CImGui.GetTexDataAsRGBA32(gui_fonts, &font_pixels, &font_size_x, &font_size_y)
+    font_pixels_casted = Ptr{vRGBAu8}(font_pixels)
+    font_pixels_managed = unsafe_wrap(Matrix{vRGBAu8}, font_pixels_casted,
+                                      (font_size_x, font_size_y))
+    font_texture = Texture(
+        SimpleFormat(FormatTypes.normalized_uint,
+                     SimpleFormatComponents.RGBA,
+                     SimpleFormatBitDepths.B8),
+        font_pixels_managed,
+        sampler = Sampler{2}(
+            wrapping = WrapModes.clamp
+        )
+    )
+    # Mesh vertex/index data is generated procedurally, into a single mesh object.
+    buffer_vertices = Buffer(sizeof(CImGui.ImDrawVert) * initial_vertex_capacity,
+                             true, KEEP_MESH_DATA_ON_CPU)
+    buffer_indices = Buffer(sizeof(CImGui.ImDrawIdx) * initial_index_capacity,
+                            true, KEEP_MESH_DATA_ON_CPU)
+    mesh = gui_generate_mesh(buffer_vertices, buffer_indices)
+
+    # Create the service instance.
+    FONT_TEXTURE_ID = CImGui.ImTextureID(1)
+    serv = GuiService(
+        window = context.window,
+
+        render_program = render_program,
+        font_texture = font_texture,
+        buffer_vertices = buffer_vertices,
+        buffer_indices = buffer_indices,
+        buffer = mesh,
+
+        user_textures_by_handle = Dict{CImGui.ImTextureID,
+                                       Union{GL.Texture, GL.View}}(
+            FONT_TEXTURE_ID => font_texture
+        ),
+        user_texture_handles = Dict{Union{GL.Texture, GL.View},
+                                    CImGui.ImTextureID}(
+            font_texture => FONT_TEXTURE_ID
+        ),
+        max_tex_handle = FONT_TEXTURE_ID,
+        next_tex_handle_to_prune = FONT_TEXTURE_ID
+    )
+    CImGui.SetTexID(gui_fonts, FONT_TEXTURE_ID)
+
+    # Configure the cursors to use.
+    cursors = [
+        (CImGui.ImGuiMouseCursor_Arrow, GLFW.ARROW_CURSOR),
+        (CImGui.ImGuiMouseCursor_TextInput, GLFW.IBEAM_CURSOR),
+        (CImGui.ImGuiMouseCursor_ResizeNS, GLFW.VRESIZE_CURSOR),
+        (CImGui.ImGuiMouseCursor_ResizeEW, GLFW.HRESIZE_CURSOR),
+        (CImGui.ImGuiMouseCursor_Hand, GLFW.HAND_CURSOR),
+        # In GLFW 3.4, there are new cursor images we could use.
+        # However, that version isn't supported.
+        (CImGui.ImGuiMouseCursor_ResizeAll, GLFW.ARROW_CURSOR), # GLFW.RESIZE_ALL_CURSOR
+        (CImGui.ImGuiMouseCursor_ResizeNESW, GLFW.ARROW_CURSOR), # GLFW.RESIZE_NESW_CURSOR
+        (CImGui.ImGuiMouseCursor_ResizeNWSE, GLFW.ARROW_CURSOR), # GLFW.RESIZE_NWSE_CURSOR
+        (CImGui.ImGuiMouseCursor_NotAllowed, GLFW.ARROW_CURSOR) # GLFW.NOT_ALLOWED_CURSOR
+    ]
+    for (slot, type) in cursors
+        # Remember that the libraries specify things in 0-based indices.
+        serv.mouse_cursors[slot + 1] = GLFW.CreateStandardCursor(type)
+    end
 
     # Finally, register and return the service.
     Bplus.GL.register_service(
@@ -530,17 +535,21 @@ function service_gui_end_frame(serv::GuiService, context::Bplus.GL.Context = get
     end
 
     # Compute coordinate transforms.
-    draw_pos_min = v2f(draw_data.DisplayPos.x, draw_data.DisplayPos.y)
-    draw_size = v2f(draw_data.DisplaySize.x, draw_data.DisplaySize.y)
-    draw_pos_max = draw_pos_min + draw_size
-    mat_proj::fmat4 = m4_ortho(v3f(draw_pos_min, -one(Float32)), v3f(draw_pos_max, one(Float32)))
-    set_uniform(serv.render_program, "u_transform", mat_proj)
-
     framebuffer_size = v2i(trunc(draw_data.DisplaySize.x * draw_data.FramebufferScale.x),
                            trunc(draw_data.DisplaySize.y * draw_data.FramebufferScale.y))
     if any(framebuffer_size <= 0)
         return nothing
     end
+    draw_pos_min = v2f(draw_data.DisplayPos.x, draw_data.DisplayPos.y)
+    draw_size = v2f(draw_data.DisplaySize.x, draw_data.DisplaySize.y)
+    draw_pos_max = draw_pos_min + draw_size
+    draw_pos_min, draw_pos_max = tuple(
+        v2f(draw_pos_min.x, draw_pos_max.y),
+        v2f(draw_pos_max.x, draw_pos_min.y)
+    )
+    mat_proj::fmat4 = m4_ortho(v3f(draw_pos_min, -one(Float32)),
+                               v3f(draw_pos_max, one(Float32)))
+    set_uniform(serv.render_program, "u_transform", mat_proj)
 
     # Set up render state.
     set_blending(context, make_blend_alpha(BlendStateRGBA))
@@ -565,15 +574,33 @@ function service_gui_end_frame(serv::GuiService, context::Bplus.GL.Context = get
         cmd_list = CImGui.ImDrawData_Get_CmdLists(draw_data, cmd_list_i - 1)
 
         # Upload the vertex/index data.
+        # We may have to reallocate the buffers if they're not large enough.
         vertices_native = CImGui.ImDrawList_Get_VtxBuffer(cmd_list)
         indices_native = CImGui.ImDrawList_Get_IdxBuffer(cmd_list)
+        reallocated_buffers::Bool = false
         let vertices = unsafe_wrap(Vector{CImGui.ImDrawVert},
                                    vertices_native.Data, vertices_native.Size)
+            if serv.buffer_vertices.byte_size < (length(vertices) * sizeof(CImGui.ImDrawVert))
+                close(serv.buffer_vertices)
+                new_size = sizeof(CImGui.ImDrawVert) * length(vertices) * 2
+                serv.buffer_vertices = Buffer(new_size, true, KEEP_MESH_DATA_ON_CPU)
+                reallocated_buffers = true
+            end
             set_buffer_data(serv.buffer_vertices, vertices)
         end
         let indices = unsafe_wrap(Vector{CImGui.ImDrawIdx},
                                   indices_native.Data, indices_native.Size)
+            if serv.buffer_indices.byte_size < (length(indices) * sizeof(CImGui.ImDrawIdx))
+                close(serv.buffer_indices)
+                new_size = sizeof(CImGui.ImDrawIdx) * length(indices) * 2
+                serv.buffer_indices = Buffer(new_size, true, KEEP_MESH_DATA_ON_CPU)
+                reallocated_buffers = true
+            end
             set_buffer_data(serv.buffer_indices, indices)
+        end
+        if reallocated_buffers
+            close(serv.buffer)
+            serv.buffer = gui_generate_mesh(serv.buffer_vertices, serv.buffer_indices)
         end
 
         # Execute each command in this list.
@@ -596,13 +623,17 @@ function service_gui_end_frame(serv::GuiService, context::Bplus.GL.Context = get
                 clip_min = clip_scale * (clip_minmax_projected.xy - clip_offset)
                 clip_max = clip_scale * (clip_minmax_projected.zw - clip_offset)
                 if all(clip_min < framebuffer_size) && all(clip_max >= 0)
-                    set_scissor(context, tuple(
-                        map(x -> trunc(Cint, x),
-                            Vec(clip_min.x,
-                                framebuffer_size.y - clip_max.y)),
-                        map(x -> trunc(Cint, x),
-                            clip_max)
-                    ))
+                    # The scissor min and max depend on the assumption
+                    #    of lower-left-corner clip-mode.
+                    scissor_min = Vec(clip_min.x, framebuffer_size.y - clip_max.y)
+                    scissor_max = clip_max
+
+                    scissor_min_pixel = map(x -> trunc(Cint, x), scissor_min)
+                    scissor_max_pixel = map(x -> trunc(Cint, x), scissor_max)
+                    # ImGUI is using 0-based, but B+ uses 1-based.
+                    scissor_min_pixel += one(Int32)
+                    # Max pixel doesn't need to add 1, but I'm not quite sure why.
+                    set_scissor(context, (scissor_min_pixel, scissor_max_pixel))
                 end
 
                 # Draw the texture.

@@ -20,7 +20,7 @@ include("post_process.jl")
 
 
 function main()
-    bp_gl_context(v2i(1500, 900), "B+ World",
+    bp_gl_context(v2i(1600, 900), "B+ World",
                   vsync=VsyncModes.On,
                   debug_mode=@bpworld_debug(),
                   glfw_hints = Dict{Int32, Int32}(
@@ -48,14 +48,8 @@ function main()
 
         while !GLFW.WindowShouldClose(window)
             check_gl_logs("Top of loop")
+            GLFW.PollEvents()
             window_size::v2i = get_window_size(context)
-
-            service_gui_start_frame(gui_service)
-            if CImGui.Begin("hi")
-                CImGui.Button("Hello world")
-                CImGui.LabelText("Label: ", "Text")
-            end
-            CImGui.End()
 
             # Update/render the scene.
             update(scene, delta_seconds, window)
@@ -81,9 +75,10 @@ function main()
             end
 
             # Finish the frame.
+            service_gui_start_frame(gui_service)
+            CImGui.ShowDemoWindow()
             service_gui_end_frame(gui_service, context)
             GLFW.SwapBuffers(window)
-            GLFW.PollEvents()
 
             # Update timing.
             now_time_ns = time_ns()
