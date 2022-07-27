@@ -17,6 +17,7 @@ using .Voxels
 include("assets.jl")
 include("scene.jl")
 include("post_process.jl")
+include("gui.jl")
 
 
 function main()
@@ -34,6 +35,7 @@ function main()
         assets::Assets = Assets()
         scene::Scene = Scene(window, assets)
         view::PostProcess = PostProcess(window, assets, scene)
+        gui::GUI = GUI(context, assets, scene, view)
 
         last_time_ns = time_ns()
         delta_seconds::Float32 = zero(Float32)
@@ -44,14 +46,14 @@ function main()
             on_window_resized(scene, wnd, v2i(new_x, new_y))
         end)
 
-        gui_service = service_gui_init(context)
-
         while !GLFW.WindowShouldClose(window)
             check_gl_logs("Top of loop")
             GLFW.PollEvents()
             window_size::v2i = get_window_size(context)
 
             # Update/render the scene.
+            service_gui_start_frame(gui.service)
+            gui_begin_debug_region(gui)
             update(scene, delta_seconds, window)
             render(scene, assets)
             render(view, window, assets, scene)
@@ -75,9 +77,9 @@ function main()
             end
 
             # Finish the frame.
-            service_gui_start_frame(gui_service)
-            CImGui.ShowDemoWindow()
-            service_gui_end_frame(gui_service, context)
+            gui_end_debug_region(gui)
+            gui_main_region(gui, assets, scene, view)
+            service_gui_end_frame(gui.service, context)
             GLFW.SwapBuffers(window)
 
             # Update timing.
