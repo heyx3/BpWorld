@@ -47,6 +47,10 @@ Base.@kwdef mutable struct GuiService
 end
 
 
+########################
+##   Implementation   ##
+########################
+
 const SERVICE_NAME_GUI = :cimgui_bplus_integration
 
 const IMGUI_KEY_TO_GLFW = Dict(
@@ -203,6 +207,11 @@ const GUI_CLIPBOARD_SET = @cfunction(gui_clipboard_set, Cvoid, (Ptr{Cvoid}, Stri
 const IM_GUI_CONTEXT_REF = Ref{Ptr{CImGui.ImGuiContext}}(C_NULL)
 const IM_GUI_CONTEXT_COUNTER = Ref(0)
 const IM_GUI_CONTEXT_LOCKER = ReentrantLock()
+
+
+###################
+##   Interface   ##
+###################
 
 "Starts and returns the GUI service."
 function service_gui_init( context::Bplus.GL.Context
@@ -678,4 +687,81 @@ function gui_tex(tex::Union{Texture, View}, service::GuiService = service_gui_ge
         service.user_textures_by_handle[next_handle] = tex
         return CImGui.ImTextureID(next_handle)
     end
+end
+
+
+#################
+##   Helpers   ##
+#################
+
+function gui_window(to_do, args...; kw_args...)
+    output = CImGui.Begin(args..., kw_args...)
+    try
+        to_do()
+        return output
+    finally
+        CImGui.End()
+    end
+end
+function gui_with_item_width(to_do, width::Real)
+    CImGui.PushItemWidth(Float32(width))
+    try
+        return to_do()
+    finally
+        CImGui.PopItemWidth()
+    end
+end
+function gui_with_unescaped_tabbing(to_do)
+    CImGui.PushAllowKeyboardFocus(false)
+    try
+        return to_do()
+    finally
+        CImGui.PopAllowKeyboardFocus()
+    end
+end
+function gui_within_tree_node(to_do, label)
+    is_visible::Bool = CImGui.TreeNode(label)
+    if is_visible
+        try
+            return to_do()
+        finally
+            CImGui.TreePop()
+        end
+    end
+
+    return nothing
+end
+
+"Edits a vector with spherical coordinates; returns its new value."
+function gui_spherical_vector( label, vec::v3f
+                               ;
+                               stays_normalized::Bool = false,
+                               fallback_yaw::Ref{Float32} = Ref(zero(Float32))
+                             )::v3f
+    radius = vlength(vec)
+    vec /= radius
+
+    yawpitch = Float32.((atan(vec.y, vec.x), acos(vec.z)))
+    # Keep the editor stable when it reaches a straight-up or straight-down vector.
+    if yawpitch[2] in (Float32(-π), Float32(π))
+        yawpitch = (fallback_yaw[], yawpitch[2])
+    else
+        fallback_yaw[] = yawpitch[1]
+    end
+
+    if stays_normalized
+        # Remove floating-point error in the previous length calculation.
+        radius = one(Float32)
+    else
+        # Provide an editor for the radius.
+        @c CImGui.InputFloat("$label Length", &radius)
+        CImGui.SameLine()
+    end
+    @c CImGui.SliderFloat2(label, &yawpitch, -π, π)
+
+    # Convert back to cartesian coordinates.
+    pitch_sincos = sincos(yawpitch[2])
+    vec_2d = v2f(sincos(yawpitch[1])).yx * pitch_sincos[1]
+    vec_z = pitch_sincos[2]
+    return radius * v3f(vec_2d, vec_z)
 end

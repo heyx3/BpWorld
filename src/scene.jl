@@ -70,6 +70,7 @@ struct SceneCollectionBuffers
     )
 end
 
+
 mutable struct Scene
     voxel_grid::VoxelGrid
     voxel_layers::Vector{Voxels.LayerRenderer}
@@ -77,13 +78,17 @@ mutable struct Scene
 
     mesh_voxel_layers::Vector{Mesh}
     mesh_voxel_buffers::Vector{Buffer}
+    
+    sun::SunData
+    sun_gui::SunDataGui
 
-    sun_dir::v3f
-    sun_light::vRGBf
+    fog::FogData
+    fog_gui::FogDataGui
+    
     sun_viewproj::fmat4 # Updated every frame
     target_shadowmap::Target
     target_tex_shadowmap::Texture
-
+    
     cam::Cam3D
     cam_settings::Cam3D_Settings
     is_mouse_captured::Bool
@@ -102,7 +107,8 @@ function Base.close(s::Scene)
     # Try to close() everything that isnt specifically blacklisted.
     # This is the safest option to avoid leaks.
     blacklist = tuple(:voxel_grid, :voxel_scale, :total_seconds,
-                      :sun_dir, :sun_light, :sun_viewproj,
+                      :sun_viewproj,
+                      :sun, :sun_gui, :fog, :fog_gui,
                       :cam, :cam_settings, :is_mouse_captured, :inputs,
                       :buffers)
     whitelist = setdiff(fieldnames(typeof(s)), blacklist)
@@ -258,8 +264,12 @@ function Scene(window::GLFW.Window, assets::Assets)
         voxels, voxel_assets, @f32(10),
         voxel_meshes, voxel_mesh_buffers,
 
-        vnorm(v3f(1, 1, -1)),
-        one(v3f) * 1,
+        SunData(),
+        SunDataGui(),
+
+        FogData(),
+        FogDataGui(),
+
         m_identityf(4, 4),
         sun_shadowmap_data...,
 
@@ -404,8 +414,8 @@ function render(scene::Scene, assets::Assets)
     voxels_world_center = scene.voxel_scale * vsize(scene.voxel_grid) / v3f(Val(2))
     # Make a view matrix for the sun looking at that frustum:
     sun_world_pos = voxels_world_center
-    @set! sun_world_pos -= scene.sun_dir * max_exclusive(scene.cam.clip_range)
-    mat_sun_view::fmat4 = m4_look_at(sun_world_pos, sun_world_pos + scene.sun_dir,
+    @set! sun_world_pos -= scene.sun.dir * max_exclusive(scene.cam.clip_range)
+    mat_sun_view::fmat4 = m4_look_at(sun_world_pos, sun_world_pos + scene.sun.dir,
                                      get_up_vector())
     # Get the bounds of the frustum in the sun's view space:
     frustum_points_sun_view = m_apply_point.(Ref(mat_sun_view), frustum_points_world)

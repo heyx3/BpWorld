@@ -2,7 +2,8 @@ module BpWorld
 
 using Setfield, Base.Threads, StructTypes, JSON3
 using GLFW, ModernGL, CImGui,
-      ImageIO, FileIO, ColorTypes, FixedPointNumbers, ImageTransformations
+      ImageIO, FileIO, ColorTypes, FixedPointNumbers, ImageTransformations,
+      CSyntax
 
 using Bplus,
       Bplus.Utilities, Bplus.Math, Bplus.GL,
@@ -14,6 +15,7 @@ using .Utils
 include("Voxels/Voxels.jl")
 using .Voxels
 
+include("data.jl")
 include("assets.jl")
 include("scene.jl")
 include("post_process.jl")
@@ -57,6 +59,9 @@ function main()
             update(scene, delta_seconds, window)
             render(scene, assets)
             render(view, window, assets, scene)
+            gui_end_debug_region(gui)
+            gui_main_region(gui, assets, scene, view)
+            service_gui_end_frame(gui.service, context)
 
             # Handle user input.
             if button_value(scene.inputs.reload_shaders)
@@ -72,14 +77,10 @@ function main()
                 elseif button_value(scene.inputs.quit)
                     is_quit_confirming = false
                 end
-            elseif button_value(scene.inputs.quit)
+            elseif !CImGui.IsAnyItemFocused() && button_value(scene.inputs.quit)
                 is_quit_confirming = true
             end
 
-            # Finish the frame.
-            gui_end_debug_region(gui)
-            gui_main_region(gui, assets, scene, view)
-            service_gui_end_frame(gui.service, context)
             GLFW.SwapBuffers(window)
 
             # Update timing.

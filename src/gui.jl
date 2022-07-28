@@ -4,6 +4,9 @@ Base.@kwdef mutable struct GUI
     service::Utils.GuiService
 
     is_debug_window_open::Bool = false
+
+    sun_dir_fallback_yaw::Ref{Float32} = Ref(zero(Float32))
+    sun_color_state::Bool = false
 end
 
 function Base.close(gui::GUI)
@@ -26,7 +29,12 @@ end
 
 """The "main region" is for the normal, user-facing UI"""
 function gui_main_region(gui::GUI, assets::Assets, scene::Scene, view::PostProcess)
-    CImGui.Begin("Main")
-
-    CImGui.End()
+    gui_window("Main") do
+        gui_within_tree_node("Sun") do
+            gui_sun(scene.sun, scene.sun_gui)
+        end
+        gui_within_tree_node("Fog") do
+            gui_fog(scene.fog, scene.fog_gui)
+        end
+    end
 end
