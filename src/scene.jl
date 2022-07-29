@@ -240,18 +240,19 @@ function Scene(window::GLFW.Window, assets::Assets)
     n_layers::Int = max(maximum(voxels), 1)
     voxel_mesh_buffers = Buffer[ ]
     voxel_meshes = Mesh[ ]
+    mesher = VoxelMesher()
     for i in 1:n_layers
-        (voxel_verts, voxel_inds) = calculate_mesh(voxels, UInt8(i))
+        calculate_mesh(voxels, UInt8(i), mesher)
 
-        mesh_voxel_vertices = Buffer(false, voxel_verts)
-        mesh_voxel_indices = Buffer(false, voxel_inds)
+        mesh_voxel_vertices = Buffer(false, mesher.vertex_buffer[1:mesher.n_vertices])
+        mesh_voxel_indices = Buffer(false, mesher.index_buffer[1:mesher.n_indices])
         push!(voxel_mesh_buffers, mesh_voxel_vertices, mesh_voxel_indices)
 
         mesh_voxels = Mesh(
             PrimitiveTypes.triangle,
             [ VertexDataSource(mesh_voxel_vertices, sizeof(VoxelVertex)) ],
             voxel_vertex_layout(1),
-            (mesh_voxel_indices, eltype(voxel_inds))
+            (mesh_voxel_indices, eltype(mesher.index_buffer))
         )
         push!(voxel_meshes, mesh_voxels)
     end
