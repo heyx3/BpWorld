@@ -37,9 +37,10 @@ unpack_vertex(v::VoxelVertex) = (
 )
 Base.show(io::IO, v::VoxelVertex) = let unpacked = unpack_vertex(v)
     print(io,
-        "min=", v3i(unpacked.voxel_idx),
-        "  face=", ('-', '+')[(unpacked_face.dir + 1) / 2],
-                   ('X', 'Y', 'Z')[unpacked_face.axis])
+        "{min=", v3i(unpacked.voxel_idx),
+        "  face=", ('-', '+')[1 + ((unpacked.face_dir + 1) ÷ 2)],
+                   ('X', 'Y', 'Z')[1 + unpacked.face_axis],
+        "}")
 end
 
 "
