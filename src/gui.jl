@@ -14,7 +14,7 @@ function Base.close(gui::GUI)
 end
 
 
-function GUI(context::GL.Context, assets::Assets, scene::Scene, view::PostProcess)
+function GUI(context::GL.Context, assets::Assets, world::World, view::PostProcess)
     service::Utils.GuiService = Utils.service_gui_init(context)
     return GUI(wnd=context.window, service=service)
 end
@@ -28,13 +28,13 @@ function gui_end_debug_region(gui::GUI)
 end
 
 """The "main region" is for the normal, user-facing UI"""
-function gui_main_region(gui::GUI, assets::Assets, scene::Scene, view::PostProcess)
+function gui_main_region(gui::GUI, assets::Assets, world::World, view::PostProcess)
     gui_window("Main") do
         gui_within_tree_node("Sun") do
-            gui_sun(scene.sun, scene.sun_gui)
+            gui_sun(world.sun, world.sun_gui)
         end
         gui_within_tree_node("Fog") do
-            gui_fog(scene.fog, scene.fog_gui)
+            gui_fog(world.fog, world.fog_gui)
         end
     end
 end

@@ -1,4 +1,4 @@
-# Structs for various pieces of scene data,
+# Structs for various pieces of world data,
 #    with accompanying GUI and serialization helpers.
 
 "All information needed to describe the sun"

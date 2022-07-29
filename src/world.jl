@@ -32,7 +32,7 @@ end
 
 
 ####################
-#   Scene Inputs   #
+#   World Inputs   #
 ####################
 
 Base.@kwdef mutable struct SceneInputs
@@ -58,7 +58,7 @@ SceneInputs(window::GLFW.Window; kw...) = SceneInputs(
 
 
 #############
-#   Scene   #
+#   World   #
 #############
 
 "Re-usable allocations."
@@ -71,20 +71,20 @@ struct SceneCollectionBuffers
 end
 
 
-mutable struct Scene
+mutable struct World
     voxel_grid::VoxelGrid
     voxel_layers::Vector{Voxels.LayerRenderer}
     voxel_scale::Float32
 
     mesh_voxel_layers::Vector{Mesh}
     mesh_voxel_buffers::Vector{Buffer}
-    
+
     sun::SunData
     sun_gui::SunDataGui
 
     fog::FogData
     fog_gui::FogDataGui
-    
+
     sun_viewproj::fmat4 # Updated every frame
     target_shadowmap::Target
     target_tex_shadowmap::Texture
@@ -103,7 +103,7 @@ mutable struct Scene
 
     buffers::SceneCollectionBuffers
 end
-function Base.close(s::Scene)
+function Base.close(s::World)
     # Try to close() everything that isnt specifically blacklisted.
     # This is the safest option to avoid leaks.
     blacklist = tuple(:voxel_grid, :voxel_scale, :total_seconds,
@@ -167,7 +167,7 @@ function set_up_sun_shadowmap(size::v2i)::Tuple
 
 end
 
-function Scene(window::GLFW.Window, assets::Assets)
+function World(window::GLFW.Window, assets::Assets)
     window_size::v2i = get_window_size(window)
 
     # Hard-code the voxel assets to load for now.
@@ -260,8 +260,8 @@ function Scene(window::GLFW.Window, assets::Assets)
     g_buffer_data = set_up_g_buffer(window_size)
     sun_shadowmap_data = set_up_sun_shadowmap(v2i(1024, 1024))
 
-    check_gl_logs("After scene initialization")
-    return Scene(
+    check_gl_logs("After world initialization")
+    return World(
         voxels, voxel_assets, @f32(10),
         voxel_meshes, voxel_mesh_buffers,
 
@@ -301,13 +301,13 @@ end
 #############
 
 
-"Updates the scene."
-function update(scene::Scene, delta_seconds::Float32, window::GLFW.Window)
-    scene.total_seconds += delta_seconds
+"Updates the world."
+function update(world::World, delta_seconds::Float32, window::GLFW.Window)
+    world.total_seconds += delta_seconds
 
     # Update inputs.
-    for input_names in fieldnames(typeof(scene.inputs))
-        field_val = getfield(scene.inputs, input_names)
+    for input_names in fieldnames(typeof(world.inputs))
+        field_val = getfield(world.inputs, input_names)
         if field_val isa AbstractButton
             Bplus.Input.button_update(field_val, window)
         elseif field_val isa AbstractAxis
@@ -316,55 +316,55 @@ function update(scene::Scene, delta_seconds::Float32, window::GLFW.Window)
             error("Unhandled case: ", typeof(field_val))
         end
     end
-    if button_value(scene.inputs.capture_mouse)
-        scene.is_mouse_captured = !scene.is_mouse_captured
+    if button_value(world.inputs.capture_mouse)
+        world.is_mouse_captured = !world.is_mouse_captured
         GLFW.SetInputMode(
             window, GLFW.CURSOR,
-            scene.is_mouse_captured ? GLFW.CURSOR_DISABLED : GLFW.CURSOR_NORMAL
+            world.is_mouse_captured ? GLFW.CURSOR_DISABLED : GLFW.CURSOR_NORMAL
         )
     end
 
     # Update the camera.
     cam_input = Cam3D_Input(
-        scene.is_mouse_captured,
-        axis_value(scene.inputs.cam_yaw),
-        axis_value(scene.inputs.cam_pitch),
-        button_value(scene.inputs.cam_sprint),
-        axis_value(scene.inputs.cam_forward),
-        axis_value(scene.inputs.cam_rightward),
-        axis_value(scene.inputs.cam_upward),
-        axis_value(scene.inputs.cam_speed_change)
+        world.is_mouse_captured,
+        axis_value(world.inputs.cam_yaw),
+        axis_value(world.inputs.cam_pitch),
+        button_value(world.inputs.cam_sprint),
+        axis_value(world.inputs.cam_forward),
+        axis_value(world.inputs.cam_rightward),
+        axis_value(world.inputs.cam_upward),
+        axis_value(world.inputs.cam_speed_change)
     )
-    (scene.cam, scene.cam_settings) = cam_update(scene.cam, scene.cam_settings, cam_input, delta_seconds)
+    (world.cam, world.cam_settings) = cam_update(world.cam, world.cam_settings, cam_input, delta_seconds)
 end
 
 
 "Renders a depth-only pass using the given view/projection matrices."
-function render_depth_only(scene::Scene, assets::Assets, mat_viewproj::fmat4)
+function render_depth_only(world::World, assets::Assets, mat_viewproj::fmat4)
     set_color_writes(Vec(false, false, false, false))
 
     # Sort the voxel layers by their depth-only shader,
     #    to minimize the amount of state changes.
-    voxel_layers = scene.buffers.sorted_voxel_layers
+    voxel_layers = world.buffers.sorted_voxel_layers
     empty!(voxel_layers)
-    append!(voxel_layers, zip(scene.voxel_layers, scene.mesh_voxel_layers))
+    append!(voxel_layers, zip(world.voxel_layers, world.mesh_voxel_layers))
     sort!(voxel_layers, by=(data->GL.gl_type(get_ogl_handle(data[1].shader_program_depth_only))))
     for (layer, mesh) in voxel_layers
         render_voxels_depth_only(mesh, layer,
-                                 zero(v3f), one(v3f) * scene.voxel_scale,
-                                 scene.cam, mat_viewproj)
+                                 zero(v3f), one(v3f) * world.voxel_scale,
+                                 world.cam, mat_viewproj)
     end
 
     set_color_writes(Vec(true, true, true, true))
 end
 
-"Renders the scene."
-function render(scene::Scene, assets::Assets)
+"Renders the world."
+function render(world::World, assets::Assets)
     context::Context = get_context()
 
     # Calculate camera matrices.
-    mat_cam_view::fmat4 = cam_view_mat(scene.cam)
-    mat_cam_proj::fmat4 = cam_projection_mat(scene.cam)
+    mat_cam_view::fmat4 = cam_view_mat(world.cam)
+    mat_cam_proj::fmat4 = cam_projection_mat(world.cam)
     mat_cam_viewproj::fmat4 = m_combine(mat_cam_view, mat_cam_proj)
     mat_cam_inv_view::fmat4 = m_invert(mat_cam_view)
     mat_cam_inv_proj::fmat4 = m_invert(mat_cam_proj)
@@ -379,23 +379,23 @@ function render(scene::Scene, assets::Assets)
     set_scissor(context, nothing)
 
     # Clear the G-buffer.
-    target_activate(scene.g_buffer)
+    target_activate(world.g_buffer)
     for i in 1:3
-        target_clear(scene.g_buffer, vRGBAf(0, 0, 0, 0), i)
+        target_clear(world.g_buffer, vRGBAf(0, 0, 0, 0), i)
     end
-    target_clear(scene.g_buffer, @f32 1.0)
+    target_clear(world.g_buffer, @f32 1.0)
 
     # Draw the voxels.
-    for (i::Int, mesh::Mesh) in enumerate(scene.mesh_voxel_layers)
-        render_voxels(mesh, scene.voxel_layers[i],
-                      zero(v3f), one(v3f) * scene.voxel_scale,
-                      scene.cam, scene.total_seconds,
+    for (i::Int, mesh::Mesh) in enumerate(world.mesh_voxel_layers)
+        render_voxels(mesh, world.voxel_layers[i],
+                      zero(v3f), one(v3f) * world.voxel_scale,
+                      world.cam, world.total_seconds,
                       mat_cam_viewproj)
     end
 
     # Calculate an orthogonal view-projection matrix for the sun's shadow-map.
     # Reference: https://www.gamedev.net/forums/topic/505893-orthographic-projection-for-shadow-mapping/
-#TODO: Bound with the entire scene plus view frustum, to catch shadow casters that are outside the frustum
+#TODO: Bound with the entire world plus view frustum, to catch shadow casters that are outside the frustum
     # Get the frustum points in world space:
     frustum_points_ndc::NTuple{8, v3f} = (
         v3f(-1, -1, -1),
@@ -412,16 +412,16 @@ function render(scene::Scene, assets::Assets)
                                         (frustum_points_world[3] + frustum_points_world[4]) +
                                         (frustum_points_world[5] + frustum_points_world[6]) +
                                         (frustum_points_world[7] + frustum_points_world[8]))
-    voxels_world_center = scene.voxel_scale * vsize(scene.voxel_grid) / v3f(Val(2))
+    voxels_world_center = world.voxel_scale * vsize(world.voxel_grid) / v3f(Val(2))
     # Make a view matrix for the sun looking at that frustum:
     sun_world_pos = voxels_world_center
-    @set! sun_world_pos -= scene.sun.dir * max_exclusive(scene.cam.clip_range)
-    mat_sun_view::fmat4 = m4_look_at(sun_world_pos, sun_world_pos + scene.sun.dir,
+    @set! sun_world_pos -= world.sun.dir * max_exclusive(world.cam.clip_range)
+    mat_sun_view::fmat4 = m4_look_at(sun_world_pos, sun_world_pos + world.sun.dir,
                                      get_up_vector())
     # Get the bounds of the frustum in the sun's view space:
     frustum_points_sun_view = m_apply_point.(Ref(mat_sun_view), frustum_points_world)
     voxel_points_world = tuple((
-        scene.voxel_scale * vsize(scene.voxel_grid) * v3f(t...)
+        world.voxel_scale * vsize(world.voxel_grid) * v3f(t...)
           for t in Iterators.product(0:1, 0:1, 0:1)
     )...)
     voxel_points_sun_view = m_apply_point.(Ref(mat_sun_view), voxel_points_world)
@@ -432,33 +432,33 @@ function render(scene::Scene, assets::Assets)
         sun_view_max = max(sun_view_max, point)
     end
     mat_sun_proj::fmat4 = m4_ortho(sun_view_min, sun_view_max)
-    scene.sun_viewproj = m_combine(mat_sun_view, mat_sun_proj)
+    world.sun_viewproj = m_combine(mat_sun_view, mat_sun_proj)
     mat_sun_world_to_texel = m_combine(
-        scene.sun_viewproj,
+        world.sun_viewproj,
         m_scale(v4f(0.5, 0.5, 0.5, 1.0)),
         m4_translate(v3f(0.5, 0.5, 0.5))
     )
 
     # Render the sun's shadow-map.
-    target_activate(scene.target_shadowmap)
-    target_clear(scene.target_shadowmap, @f32 1.0)
-    render_depth_only(scene, assets, scene.sun_viewproj)
+    target_activate(world.target_shadowmap)
+    target_clear(world.target_shadowmap, @f32 1.0)
+    render_depth_only(world, assets, world.sun_viewproj)
     target_activate(nothing)
-    glGenerateTextureMipmap(get_ogl_handle(scene.target_tex_shadowmap))
+    glGenerateTextureMipmap(get_ogl_handle(world.target_tex_shadowmap))
 end
 
-function on_window_resized(scene::Scene, window::GLFW.Window, new_size::v2i)
-    if new_size != scene.g_buffer.size
-        close.((scene.g_buffer, scene.target_tex_depth,
-                scene.target_tex_color, scene.target_tex_normals,
-                scene.target_tex_surface))
+function on_window_resized(world::World, window::GLFW.Window, new_size::v2i)
+    if new_size != world.g_buffer.size
+        close.((world.g_buffer, world.target_tex_depth,
+                world.target_tex_color, world.target_tex_normals,
+                world.target_tex_surface))
         new_data = set_up_g_buffer(new_size)
         (
-            scene.g_buffer,
-            scene.target_tex_depth,
-            scene.target_tex_color,
-            scene.target_tex_surface,
-            scene.target_tex_normals
+            world.g_buffer,
+            world.target_tex_depth,
+            world.target_tex_color,
+            world.target_tex_surface,
+            world.target_tex_normals
         ) = new_data
     end
 end

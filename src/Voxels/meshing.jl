@@ -79,7 +79,7 @@ function calculate_mesh(grid::VoxelGrid, layer::UInt8, mesher::VoxelMesher)
     n_worst_case_faces::Int = n_worst_case_cubes * 6
     resize!(mesher.vertex_buffer, n_worst_case_faces * 4)
     resize!(mesher.index_buffer, n_worst_case_faces * 6)
-    println("Max buffer size is ",
+    println("Max buffer size is updated to ",
             Base.format_bytes(sizeof(VoxelVertex) * length(mesher.vertex_buffer)), " for vertices and ",
             Base.format_bytes(sizeof(UInt32) * length(mesher.index_buffer)), " for indices")
     @bpworld_assert(length(mesher.vertex_buffer) <= typemax(UInt32),
