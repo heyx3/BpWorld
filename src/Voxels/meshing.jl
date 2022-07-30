@@ -61,8 +61,7 @@ mutable struct VoxelMesher
     @atomic n_indices::Int
 end
 VoxelMesher() = VoxelMesher(
-    Vector{VoxelVertex}(undef, 2^20),
-    Vector{UInt32}(undef, (2^20 * 3) ÷ 4),
+    Vector{VoxelVertex}(), Vector{UInt32}(),
     0, 0
 )
 

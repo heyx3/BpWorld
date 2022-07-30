@@ -19,6 +19,7 @@ module Voxels
 
     include("asset.jl")
     include("meshing.jl")
+    include("scene.jl")
 
     export VOXELS_ASSETS_PATH,
            VoxelGrid,

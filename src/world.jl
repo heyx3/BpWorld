@@ -72,12 +72,7 @@ end
 
 
 mutable struct World
-    voxel_grid::VoxelGrid
-    voxel_layers::Vector{Voxels.LayerRenderer}
-    voxel_scale::Float32
-
-    mesh_voxel_layers::Vector{Mesh}
-    mesh_voxel_buffers::Vector{Buffer}
+    voxels::Voxels.Scene
 
     sun::SunData
     sun_gui::SunDataGui
@@ -88,7 +83,7 @@ mutable struct World
     sun_viewproj::fmat4 # Updated every frame
     target_shadowmap::Target
     target_tex_shadowmap::Texture
-    
+
     cam::Cam3D
     cam_settings::Cam3D_Settings
     is_mouse_captured::Bool
@@ -106,7 +101,7 @@ end
 function Base.close(s::World)
     # Try to close() everything that isnt specifically blacklisted.
     # This is the safest option to avoid leaks.
-    blacklist = tuple(:voxel_grid, :voxel_scale, :total_seconds,
+    blacklist = tuple(:total_seconds,
                       :sun_viewproj,
                       :sun, :sun_gui, :fog, :fog_gui,
                       :cam, :cam_settings, :is_mouse_captured, :inputs,
@@ -191,7 +186,6 @@ function World(window::GLFW.Window, assets::Assets)
 
     # Generate some voxel data.
     voxel_size = v3i(Val(64))
-    voxels = VoxelGrid(undef, voxel_size.data)
     voxel_terrain = Voxels.Generation.VoxelField(
         layer = 0x1,
         threshold = @f32(0.3),
@@ -218,7 +212,7 @@ function World(window::GLFW.Window, assets::Assets)
         radius = 0.3,
         layer = 0x3
     )
-    voxel_scene = Voxels.Generation.VoxelUnion(
+    voxel_final = Voxels.Generation.VoxelUnion(
         Float32.([ 1.0, 2.0, 3.0 ]),
         Voxels.Generation.VoxelDifference(
             voxel_terrain,
@@ -234,36 +228,14 @@ function World(window::GLFW.Window, assets::Assets)
         voxel_shape1,
         voxel_shape2
     )
-    Voxels.Generation.generate!(voxels, voxel_scene)
-
-    # Set up the meshes for each voxel layer.
-    n_layers::Int = max(maximum(voxels), 1)
-    voxel_mesh_buffers = Buffer[ ]
-    voxel_meshes = Mesh[ ]
-    mesher = VoxelMesher()
-    for i in 1:n_layers
-        calculate_mesh(voxels, UInt8(i), mesher)
-
-        mesh_voxel_vertices = Buffer(false, mesher.vertex_buffer[1:mesher.n_vertices])
-        mesh_voxel_indices = Buffer(false, mesher.index_buffer[1:mesher.n_indices])
-        push!(voxel_mesh_buffers, mesh_voxel_vertices, mesh_voxel_indices)
-
-        mesh_voxels = Mesh(
-            PrimitiveTypes.triangle,
-            [ VertexDataSource(mesh_voxel_vertices, sizeof(VoxelVertex)) ],
-            voxel_vertex_layout(1),
-            (mesh_voxel_indices, eltype(mesher.index_buffer))
-        )
-        push!(voxel_meshes, mesh_voxels)
-    end
+    voxel_scene = Voxels.Scene(voxel_size, voxel_final, @f32(10), voxel_assets)
 
     g_buffer_data = set_up_g_buffer(window_size)
     sun_shadowmap_data = set_up_sun_shadowmap(v2i(1024, 1024))
 
     check_gl_logs("After world initialization")
     return World(
-        voxels, voxel_assets, @f32(10),
-        voxel_meshes, voxel_mesh_buffers,
+        voxel_scene,
 
         SunData(),
         SunDataGui(),
@@ -336,25 +308,15 @@ function update(world::World, delta_seconds::Float32, window::GLFW.Window)
         axis_value(world.inputs.cam_speed_change)
     )
     (world.cam, world.cam_settings) = cam_update(world.cam, world.cam_settings, cam_input, delta_seconds)
+
+    Voxels.update(world.voxels, delta_seconds)
 end
 
 
 "Renders a depth-only pass using the given view/projection matrices."
 function render_depth_only(world::World, assets::Assets, mat_viewproj::fmat4)
     set_color_writes(Vec(false, false, false, false))
-
-    # Sort the voxel layers by their depth-only shader,
-    #    to minimize the amount of state changes.
-    voxel_layers = world.buffers.sorted_voxel_layers
-    empty!(voxel_layers)
-    append!(voxel_layers, zip(world.voxel_layers, world.mesh_voxel_layers))
-    sort!(voxel_layers, by=(data->GL.gl_type(get_ogl_handle(data[1].shader_program_depth_only))))
-    for (layer, mesh) in voxel_layers
-        render_voxels_depth_only(mesh, layer,
-                                 zero(v3f), one(v3f) * world.voxel_scale,
-                                 world.cam, mat_viewproj)
-    end
-
+    Voxels.render_depth_only(world.voxels, world.cam, mat_viewproj)
     set_color_writes(Vec(true, true, true, true))
 end
 
@@ -386,16 +348,11 @@ function render(world::World, assets::Assets)
     target_clear(world.g_buffer, @f32 1.0)
 
     # Draw the voxels.
-    for (i::Int, mesh::Mesh) in enumerate(world.mesh_voxel_layers)
-        render_voxels(mesh, world.voxel_layers[i],
-                      zero(v3f), one(v3f) * world.voxel_scale,
-                      world.cam, world.total_seconds,
-                      mat_cam_viewproj)
-    end
+    Voxels.render(world.voxels, world.cam, mat_cam_viewproj, world.total_seconds)
 
     # Calculate an orthogonal view-projection matrix for the sun's shadow-map.
     # Reference: https://www.gamedev.net/forums/topic/505893-orthographic-projection-for-shadow-mapping/
-#TODO: Bound with the entire world plus view frustum, to catch shadow casters that are outside the frustum
+    #TODO: Bound with the entire world, to catch shadow casters that are outside the frustum
     # Get the frustum points in world space:
     frustum_points_ndc::NTuple{8, v3f} = (
         v3f(-1, -1, -1),
@@ -412,7 +369,7 @@ function render(world::World, assets::Assets)
                                         (frustum_points_world[3] + frustum_points_world[4]) +
                                         (frustum_points_world[5] + frustum_points_world[6]) +
                                         (frustum_points_world[7] + frustum_points_world[8]))
-    voxels_world_center = world.voxel_scale * vsize(world.voxel_grid) / v3f(Val(2))
+    voxels_world_center = world.voxels.world_scale * vsize(world.voxels.grid) / v3f(Val(2))
     # Make a view matrix for the sun looking at that frustum:
     sun_world_pos = voxels_world_center
     @set! sun_world_pos -= world.sun.dir * max_exclusive(world.cam.clip_range)
@@ -421,7 +378,7 @@ function render(world::World, assets::Assets)
     # Get the bounds of the frustum in the sun's view space:
     frustum_points_sun_view = m_apply_point.(Ref(mat_sun_view), frustum_points_world)
     voxel_points_world = tuple((
-        world.voxel_scale * vsize(world.voxel_grid) * v3f(t...)
+        world.voxels.world_scale * vsize(world.voxels.grid) * v3f(t...)
           for t in Iterators.product(0:1, 0:1, 0:1)
     )...)
     voxel_points_sun_view = m_apply_point.(Ref(mat_sun_view), voxel_points_world)
