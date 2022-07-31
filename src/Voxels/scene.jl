@@ -2,7 +2,7 @@
 mutable struct Scene
     grid::VoxelGrid
     grid_tex3d::GL.Texture # Red-only, 8-bit uint
-    world_scale::Float32
+    world_scale::v3f
 
     layers::Vector{LayerRenderer}
 
@@ -24,7 +24,7 @@ mutable struct Scene
 end
 
 function Scene(grid_size::v3i, grid_generator::Generation.AbstractVoxelGenerator,
-               world_scale::Float32,
+               world_scale::v3f,
                assets::Vector{LayerRenderer}
               )::Scene
     grid::VoxelGrid = fill(zero(eltype(VoxelGrid)),
@@ -138,12 +138,11 @@ function update(scene::Scene, delta_seconds::Float32)
 end
 
 function render(scene::Scene, cam::Cam3D, mat_cam_viewproj::fmat4, elapsed_seconds::Float32)
-    voxel_scale = one(v3f) * scene.world_scale
     for i::Int in 1:length(scene.layers)
         if exists(scene.layer_meshes[i])
             render_voxels(scene.layer_meshes[i][3],
                           scene.layers[i],
-                          zero(v3f), voxel_scale,
+                          zero(v3f), scene.world_scale,
                           cam, elapsed_seconds, mat_cam_viewproj)
         end
     end
@@ -151,15 +150,20 @@ function render(scene::Scene, cam::Cam3D, mat_cam_viewproj::fmat4, elapsed_secon
     return nothing
 end
 function render_depth_only(scene::Scene, cam::Cam3D, mat_cam_viewproj::fmat4)
-    voxel_scale = one(v3f) * scene.world_scale
-
     # Sort the voxel layers by their depth-only shader, to minimize driver overhead.
     voxel_layers::Vector = scene.buffer_sorted_voxel_layers
     empty!(voxel_layers)
-    append!(voxel_layers, zip(scene.layers, voxel_layers))
+    for (layer, resources) in zip(scene.layers, scene.layer_meshes)
+        if exists(resources)
+            push!(voxel_layers, (layer, resources))
+        end
+    end
+    sort!(voxel_layers,
+          by=(data -> GL.gl_type(get_ogl_handle(data[1].shader_program_depth_only))))
+
     for (layer, (buf1, buf2, mesh)) in voxel_layers
         render_voxels_depth_only(mesh, layer,
-                                 zero(v3f), voxel_scale,
-                                 cam, mat_cam_viewproj)
+                                zero(v3f), scene.world_scale,
+                                cam, mat_cam_viewproj)
     end
 end

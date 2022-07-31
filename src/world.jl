@@ -228,7 +228,8 @@ function World(window::GLFW.Window, assets::Assets)
         voxel_shape1,
         voxel_shape2
     )
-    voxel_scene = Voxels.Scene(voxel_size, voxel_final, @f32(10), voxel_assets)
+    voxel_scene = Voxels.Scene(voxel_size, voxel_final,
+                               v3f(10, 10, 10), voxel_assets)
 
     g_buffer_data = set_up_g_buffer(window_size)
     sun_shadowmap_data = set_up_sun_shadowmap(v2i(1024, 1024))
