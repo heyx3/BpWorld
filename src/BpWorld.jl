@@ -66,6 +66,7 @@ function main()
             # Handle user input.
             if button_value(world.inputs.reload_shaders)
                 reload_shaders(assets)
+                reload_shaders(world, assets)
             end
             if is_quit_confirming
                 draw_scale = v3f(assets.tex_quit_confirmation.size.xy / get_window_size(),
@@ -87,6 +88,8 @@ function main()
             now_time_ns = time_ns()
             delta_seconds = (now_time_ns - last_time_ns) / Float32(1e9)
             last_time_ns = now_time_ns
+            # Cap the duration of a frame, so big hangs don't cause chaos.
+            delta_seconds = min(0.2, delta_seconds)
 
             # Wait, for a consistent framerate that doesn't burn cycles.
             wait_time = (1/60) - delta_seconds

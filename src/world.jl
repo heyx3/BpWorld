@@ -423,3 +423,23 @@ function on_window_resized(world::World, window::GLFW.Window, new_size::v2i)
         ) = new_data
     end
 end
+
+function reload_shaders(world::World, assets::Assets)
+    world.voxels.layers = [
+        Voxels.LayerRenderer(JSON3.read(open(io -> read(io, String),
+                                             joinpath(VOXELS_ASSETS_PATH, "rocks", "rocks.json"),
+                                             "r"),
+                                        Voxels.LayerData),
+                             assets.prog_voxels_depth_only),
+        Voxels.LayerRenderer(JSON3.read(open(io -> read(io, String),
+                                             joinpath(VOXELS_ASSETS_PATH, "scifi", "scifi-blue.json"),
+                                             "r"),
+                                        Voxels.LayerData),
+                             assets.prog_voxels_depth_only),
+        Voxels.LayerRenderer(JSON3.read(open(io -> read(io, String),
+                                             joinpath(VOXELS_ASSETS_PATH, "scifi", "scifi-red.json"),
+                                             "r"),
+                                        Voxels.LayerData),
+                             assets.prog_voxels_depth_only)
+    ]
+end

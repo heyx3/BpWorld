@@ -74,17 +74,17 @@ function load_all_shaders()::Tuple
                              insert_above_code = """
                                 #define FRAGMENT_DIR 1
                              """,
-                             flexible_mode = true)
+                             flexible_mode = true),
+        Voxels.LayerDepthRenderer()
     )
 end
 
 function Assets()
     textures::Tuple = load_all_textures()
     shaders::Tuple = load_all_shaders()
-    voxels_depth_only = Voxels.LayerDepthRenderer()
 
     check_gl_logs("After asset initialization")
-    return Assets(textures..., shaders..., voxels_depth_only)
+    return Assets(textures..., shaders...)
 end
 
 
@@ -166,14 +166,8 @@ function prepare_program_lighting( assets::Assets,
 end
 
 function reload_shaders(assets::Assets)
-    # Is field enumeration order guaranteed?
-    # It seems to work in the REPL.
     shaders = load_all_shaders()
-    idx::Int = 1
-    for field in fieldnames(Assets)
-        if fieldtype(Assets, field) == Program
-            setfield!(assets, field, shaders[idx])
-            idx += 1
-        end
-    end
+    assets.prog_lighting = shaders[1]
+    assets.prog_voxels_depth_only = shaders[2]
+    @assert(length(shaders) == 2, "Something changed")
 end
