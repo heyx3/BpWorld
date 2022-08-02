@@ -7,7 +7,7 @@
 // #J#J#
 //  ^^ Tells the Julia project to cut off everything before it before compiling
 
-//The project automatically includes "assets/voxels/common.shader",
+//The project automatically includes "assets/voxels/common_frag.shader",
 //    and defines the textures declared in the accompanying "rocks.json" file.
 
 void main() {

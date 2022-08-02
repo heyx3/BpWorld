@@ -14,7 +14,7 @@ struct VoxelVertex
     data::Vec{3, UInt32}
 end
 @inline function VoxelVertex(grid_idx::Vec3{<:Integer}, face_axis::Integer, face_dir::Signed)
-    @bpworld_assert(all(grid_idx > 0), "Given a negative grid position!")
+    @bpworld_assert(all(grid_idx >= 0), "Given a negative grid position!")
     @bpworld_assert(all(grid_idx < (typemax(UInt32) >> 1)),
                     "Grid position is too big to fit into the packed data format! ", grid_idx)
     @bpworld_assert(face_axis in 1:3, "Invalid axis: ", face_axis)
@@ -113,7 +113,9 @@ function calculate_mesh(grid::VoxelGrid, layer::UInt8, mesher::VoxelMesher)
             is_on_edge::Bool = !in(neighbor_voxel_idx, 1:grid_size)
             is_neighbor_free::Bool = is_on_edge || (@inbounds(grid[neighbor_voxel_idx]) == EMPTY_VOXEL)
             if is_neighbor_free
-                a = voxel_idx
+                a = voxel_idx - 1 # Make it 0-based to start at the origin
+                @inbounds(@set! a[axis] += ((dir + 1) ÷ 2))
+
                 @inbounds begin
                     b = @set a[axis2] += one(Int32)
                     c = @set b[axis3] += one(Int32)
@@ -159,7 +161,7 @@ function calculate_mesh(grid::VoxelGrid, layer::UInt8, mesher::VoxelMesher)
         # Unpack the counter into a slice and its axis.
         (axis, slice) = if i > (grid_size[1] + grid_size[2])
             (UInt8(3), Int32(i - grid_size[1] - grid_size[2]))
-        elseif i > grid_size[2]
+        elseif i > grid_size[1]
             (UInt8(2), Int32(i - grid_size[1]))
         else
             (UInt8(1), Int32(i))
