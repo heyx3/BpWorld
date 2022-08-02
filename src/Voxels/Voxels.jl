@@ -19,9 +19,11 @@ module Voxels
 
     include("asset.jl")
     include("meshing.jl")
+    include("scene.jl")
 
     export VOXELS_ASSETS_PATH,
            VoxelGrid,
            VoxelVertex, unpack_vertex, voxel_vertex_layout,
-           calculate_mesh, render_voxels, render_voxels_depth_only
+           VoxelMesher, calculate_mesh,
+           render_voxels, render_voxels_depth_only
 end

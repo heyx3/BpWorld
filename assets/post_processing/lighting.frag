@@ -9,6 +9,7 @@
 //#TODO: Use a compute shader instead
 
 #include <utils.shader>
+#include <post_processing/fog.shader>
 
 struct GBuffer
 {
@@ -34,12 +35,6 @@ struct Camera
 };
 uniform Camera u_camera;
 
-struct Fog
-{
-    float density, dropoff;
-    vec3 color;
-    float heightOffset, heightScale;
-};
 uniform Fog u_fog = Fog(0.0, 1.0, vec3(1, 0, 1), 420.0, 0.01);
 
 
@@ -218,18 +213,9 @@ if (false) { //TODO: Debug this stuff
     //TODO: Emissive
 
     //Compute height-fog.
-    //Height-fog density is only a function of vertical position.
-    //As long as that function can be integrated analytically,
-    //    then total fog density itself can be integrated analytically.
-    //Using a function of 'f(z) = exp(z)', the integral is 'if(z) = exp(z) + C'.
-    //The C cancels out in the definite integral, which is "if(z1) - if(z2)".
-    float fogStartHeight = u_fog.heightScale * (u_camera.pos.z - u_fog.heightOffset),
-          fogEndHeight = u_fog.heightScale * (worldPos.z - u_fog.heightOffset),
-          fogIntegralScale = (worldDist / max(0.00001, verticalWorldDist)),
-          fogDensityIntegral = abs(fogIntegralScale * (exp(-fogEndHeight) - exp(-fogStartHeight)));
-    float fogThickness = SATURATE(u_fog.density * fogDensityIntegral);
-    fogThickness = pow(fogThickness, u_fog.dropoff);
-    vec3 foggedColor = mix(surfaceLight, u_fog.color, fogThickness);
+    vec3 foggedColor = computeFoggedColor(u_fog, u_camera.pos.z, worldPos.z,
+                                          worldDist, verticalWorldDist,
+                                          surfaceLight);
 
     //Apply tonemapping/gamma-correction.
     vec3 tonedColor = foggedColor / (foggedColor + 1.0);

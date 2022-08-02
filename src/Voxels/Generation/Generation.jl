@@ -6,7 +6,7 @@ using Bplus,
 using ..Voxels, ...Utils
 
 "
-Some technique for placing voxels in a scene.
+Some technique for placing voxels in a world.
 
 Should not be used on more than one grid at a time (to allow for caching and memory re-use).
 "

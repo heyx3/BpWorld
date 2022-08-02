@@ -12,12 +12,12 @@ function Base.close(p::PostProcess)
     end
 end
 
-function PostProcess(window::GLFW.Window, assets::Assets, scene::Scene)
+function PostProcess(window::GLFW.Window, assets::Assets, world::World)
     return PostProcess()
 end
 
 
-function render(view::PostProcess, window::GLFW.Window, assets::Assets, scene::Scene)
+function render(view::PostProcess, window::GLFW.Window, assets::Assets, world::World)
     context::Context = get_context()
     resources::CResources = get_resources(context)
 
@@ -26,27 +26,25 @@ function render(view::PostProcess, window::GLFW.Window, assets::Assets, scene::S
     render_clear(context, GL.Ptr_Target(), @f32(1))
 
     prepare_program_lighting(assets,
-        scene.target_tex_depth, scene.target_tex_color,
-        scene.target_tex_normals, scene.target_tex_surface,
+        world.target_tex_depth, world.target_tex_color,
+        world.target_tex_normals, world.target_tex_surface,
 
-        scene.sun_dir, scene.sun_light,
-        scene.target_tex_shadowmap, @f32(10),
-        scene.sun_viewproj,
+        world.sun,
+        world.target_tex_shadowmap, @f32(10),
+        world.sun_viewproj,
 
-        scene.cam,
-
-        @f32(0.0084), @f32(1), vRGBf(0.5, 0.5, 1.0),
-        @f32(430), @f32(0.01)
+        world.cam,
+        world.fog
     )
-    view_activate(get_view(scene.target_tex_shadowmap))
-    view_activate(get_view(scene.target_tex_depth, G_BUFFER_SAMPLER))
-    view_activate(get_view(scene.target_tex_color, G_BUFFER_SAMPLER))
-    view_activate(get_view(scene.target_tex_normals, G_BUFFER_SAMPLER))
-    view_activate(get_view(scene.target_tex_surface, G_BUFFER_SAMPLER))
+    view_activate(get_view(world.target_tex_shadowmap))
+    view_activate(get_view(world.target_tex_depth, G_BUFFER_SAMPLER))
+    view_activate(get_view(world.target_tex_color, G_BUFFER_SAMPLER))
+    view_activate(get_view(world.target_tex_normals, G_BUFFER_SAMPLER))
+    view_activate(get_view(world.target_tex_surface, G_BUFFER_SAMPLER))
     GL.render_mesh(context, resources.screen_triangle, assets.prog_lighting)
-    view_deactivate(get_view(scene.target_tex_shadowmap))
-    view_deactivate(get_view(scene.target_tex_depth, G_BUFFER_SAMPLER))
-    view_deactivate(get_view(scene.target_tex_color, G_BUFFER_SAMPLER))
-    view_deactivate(get_view(scene.target_tex_normals, G_BUFFER_SAMPLER))
-    view_deactivate(get_view(scene.target_tex_surface, G_BUFFER_SAMPLER))
+    view_deactivate(get_view(world.target_tex_shadowmap))
+    view_deactivate(get_view(world.target_tex_depth, G_BUFFER_SAMPLER))
+    view_deactivate(get_view(world.target_tex_color, G_BUFFER_SAMPLER))
+    view_deactivate(get_view(world.target_tex_normals, G_BUFFER_SAMPLER))
+    view_deactivate(get_view(world.target_tex_surface, G_BUFFER_SAMPLER))
 end

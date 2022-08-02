@@ -2,7 +2,8 @@ module BpWorld
 
 using Setfield, Base.Threads, StructTypes, JSON3
 using GLFW, ModernGL, CImGui,
-      ImageIO, FileIO, ColorTypes, FixedPointNumbers, ImageTransformations
+      ImageIO, FileIO, ColorTypes, FixedPointNumbers, ImageTransformations,
+      CSyntax
 
 using Bplus,
       Bplus.Utilities, Bplus.Math, Bplus.GL,
@@ -14,9 +15,11 @@ using .Utils
 include("Voxels/Voxels.jl")
 using .Voxels
 
+include("data.jl")
 include("assets.jl")
-include("scene.jl")
+include("world.jl")
 include("post_process.jl")
+include("gui.jl")
 
 
 function main()
@@ -32,8 +35,9 @@ function main()
 
         bp_resources::CResources = get_resources()
         assets::Assets = Assets()
-        scene::Scene = Scene(window, assets)
-        view::PostProcess = PostProcess(window, assets, scene)
+        world::World = World(window, assets)
+        view::PostProcess = PostProcess(window, assets, world)
+        gui::GUI = GUI(context, assets, world, view)
 
         last_time_ns = time_ns()
         delta_seconds::Float32 = zero(Float32)
@@ -41,23 +45,26 @@ function main()
         frame_idx::UInt = zero(UInt)
 
         GLFW.SetWindowSizeCallback(window, (wnd, new_x, new_y) -> begin
-            on_window_resized(scene, wnd, v2i(new_x, new_y))
+            on_window_resized(world, wnd, v2i(new_x, new_y))
         end)
-
-        gui_service = service_gui_init(context)
 
         while !GLFW.WindowShouldClose(window)
             check_gl_logs("Top of loop")
             GLFW.PollEvents()
             window_size::v2i = get_window_size(context)
 
-            # Update/render the scene.
-            update(scene, delta_seconds, window)
-            render(scene, assets)
-            render(view, window, assets, scene)
+            # Update/render the world.
+            service_gui_start_frame(gui.service)
+            gui_begin_debug_region(gui)
+            update(world, delta_seconds, window)
+            render(world, assets)
+            render(view, window, assets, world)
+            gui_end_debug_region(gui)
+            gui_main_region(gui, assets, world, view)
+            service_gui_end_frame(gui.service, context)
 
             # Handle user input.
-            if button_value(scene.inputs.reload_shaders)
+            if button_value(world.inputs.reload_shaders)
                 reload_shaders(assets)
             end
             if is_quit_confirming
@@ -65,19 +72,15 @@ function main()
                                  1.0)
                 resource_blit(bp_resources, assets.tex_quit_confirmation,
                               quad_transform=m_scale(draw_scale))
-                if button_value(scene.inputs.quit_confirm)
+                if button_value(world.inputs.quit_confirm)
                     break
-                elseif button_value(scene.inputs.quit)
+                elseif button_value(world.inputs.quit)
                     is_quit_confirming = false
                 end
-            elseif button_value(scene.inputs.quit)
+            elseif !CImGui.IsAnyItemFocused() && button_value(world.inputs.quit)
                 is_quit_confirming = true
             end
 
-            # Finish the frame.
-            service_gui_start_frame(gui_service)
-            CImGui.ShowDemoWindow()
-            service_gui_end_frame(gui_service, context)
             GLFW.SwapBuffers(window)
 
             # Update timing.
@@ -99,7 +102,7 @@ function main()
         end
 
         close(view)
-        close(scene)
+        close(world)
         close(assets)
     end
 end

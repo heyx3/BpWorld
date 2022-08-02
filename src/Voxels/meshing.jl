@@ -37,9 +37,10 @@ unpack_vertex(v::VoxelVertex) = (
 )
 Base.show(io::IO, v::VoxelVertex) = let unpacked = unpack_vertex(v)
     print(io,
-        "min=", v3i(unpacked.voxel_idx),
-        "  face=", ('-', '+')[(unpacked_face.dir + 1) / 2],
-                   ('X', 'Y', 'Z')[unpacked_face.axis])
+        "{min=", v3i(unpacked.voxel_idx),
+        "  face=", ('-', '+')[1 + ((unpacked.face_dir + 1) ÷ 2)],
+                   ('X', 'Y', 'Z')[1 + unpacked.face_axis],
+        "}")
 end
 
 "
@@ -51,65 +52,123 @@ voxel_vertex_layout(buffer_idx::Int = 1) = [
     VertexAttribute(buffer_idx, 0, VertexData_UVector(3, UInt32))
 ]
 
+
+"A set of buffers that can be used to mesh voxels."
+mutable struct VoxelMesher
+    vertex_buffer::Vector{VoxelVertex}
+    index_buffer::Vector{UInt32}
+    @atomic n_vertices::Int
+    @atomic n_indices::Int
+end
+VoxelMesher() = VoxelMesher(
+    Vector{VoxelVertex}(), Vector{UInt32}(),
+    0, 0
+)
+
 "Calculates the vertices and indices needed to render the given voxel layer in the given grid"
-function calculate_mesh(grid::VoxelGrid, layer::UInt8)::Tuple{Vector{VoxelVertex}, Vector{UInt32}}
-@inbounds begin
+function calculate_mesh(grid::VoxelGrid, layer::UInt8, mesher::VoxelMesher)
     grid_size = v3i(size(grid))
 
-    #TODO: Use greedy meshing to speed up
-    #TODO: Pre-allocate one big matrix to generate all the data within
-    #TODO: Spread across threads (after switching to the matrix approach, to avoid interference between threads)
-    vertices = Vector{VoxelVertex}()
-    indices = Vector{UInt32}()
+    # Pre-size the array for the worst-case scenario: every other cube being solid.
+    is_odd::v3b = map(iszero, grid_size % 2)
+    worst_case_grid_size = v3i() do i::Int
+        grid_size[i] + Int32(is_odd[i] ? 1 : 0)
+    end
+    n_worst_case_cubes::Int = prod(worst_case_grid_size) ÷ 2
+    n_worst_case_faces::Int = n_worst_case_cubes * 6
+    resize!(mesher.vertex_buffer, n_worst_case_faces * 4)
+    resize!(mesher.index_buffer, n_worst_case_faces * 6)
+    println("Max buffer size is updated to ",
+            Base.format_bytes(sizeof(VoxelVertex) * length(mesher.vertex_buffer)), " for vertices and ",
+            Base.format_bytes(sizeof(UInt32) * length(mesher.index_buffer)), " for indices")
+    @bpworld_assert(length(mesher.vertex_buffer) <= typemax(UInt32),
+                    "Holy crap that's a lot of vertices")
+
+    # Split the work across threads/tasks; use atomics for lock-free insertion of mesh data.
+    @atomic mesher.n_vertices = 0
+    @atomic mesher.n_indices = 0
     function process_slice(axis::UInt8, dir::Int8, slice::Int32)
         axis2::Int = mod1(axis+1, 3)
         axis3::Int = mod1(axis+2, 3)
 
-        for plane_idx::v2i in 1:v2i(grid_size[axis2], grid_size[axis3])
+        min_plane_idx = one(v2i)
+        max_plane_idx = v2i(@inbounds grid_size.data[axis2],
+                            @inbounds grid_size.data[axis3])
+        for plane_idx::v2i in min_plane_idx:max_plane_idx
             voxel_idx = -one(v3i)
-            @set! voxel_idx[axis] = slice
-            @set! voxel_idx[axis2] = plane_idx.x
-            @set! voxel_idx[axis3] = plane_idx.y
+            @inbounds begin
+                @set! voxel_idx[axis] = slice
+                @set! voxel_idx[axis2] = plane_idx.x
+                @set! voxel_idx[axis3] = plane_idx.y
+            end
 
             # For each filled voxel, draw its boundary with empty neighbors.
-            if grid[voxel_idx] != layer
+            if (grid[voxel_idx]) != layer
                 continue
             end
 
             neighbor_voxel_idx = voxel_idx
-            @set! neighbor_voxel_idx[axis] += dir
+            @inbounds(@set! neighbor_voxel_idx[axis] += dir)
 
             is_on_edge::Bool = !in(neighbor_voxel_idx, 1:grid_size)
-            is_neighbor_free::Bool = is_on_edge || (grid[neighbor_voxel_idx] == EMPTY_VOXEL)
+            is_neighbor_free::Bool = is_on_edge || (@inbounds(grid[neighbor_voxel_idx]) == EMPTY_VOXEL)
             if is_neighbor_free
-                @bpworld_assert(length(vertices) < (typemax(UInt32) - 4),
-                                "Holy crap that's a lot of vertices")
-                first_idx = UInt32(length(vertices))
-
                 a = voxel_idx
-                b = @set a[axis2] += one(Int32)
-                c = @set b[axis3] += one(Int32)
-                d = @set a[axis3] += one(Int32)
+                @inbounds begin
+                    b = @set a[axis2] += one(Int32)
+                    c = @set b[axis3] += one(Int32)
+                    d = @set a[axis3] += one(Int32)
+                end
 
-                push!(vertices, VoxelVertex.(
-                    (a, b, c, d),
-                    Ref(axis), Ref(dir)
-                )...)
+                # Insert vertices.
+                last_vert_idx::Int = @atomic mesher.n_vertices += 4
+                @bpworld_assert(last_vert_idx <= length(mesher.vertex_buffer))
+                @inbounds setindex!.(
+                    Ref(mesher.vertex_buffer),
+                    VoxelVertex.(
+                        (a, b, c, d),
+                        Ref(axis), Ref(dir)
+                    ),
+                    tuple(last_vert_idx - 3,
+                          last_vert_idx - 2,
+                          last_vert_idx - 1,
+                          last_vert_idx - 0),
+                )
 
-                push!(indices,
-                      first_idx, first_idx + 0x1, first_idx + 0x2,
-                      first_idx, first_idx + 0x2, first_idx + 0x3)
+                # Insert indices.
+                last_indice_idx::Int = @atomic mesher.n_indices += 6
+                @bpworld_assert(last_indice_idx <= length(mesher.index_buffer))
+                @inbounds setindex!.(
+                    Ref(mesher.index_buffer),
+                    tuple(
+                        # Remember, on the GPU they will be 0-based indices
+                        last_vert_idx - 4, last_vert_idx - 3, last_vert_idx - 2,
+                        last_vert_idx - 4, last_vert_idx - 2, last_vert_idx - 1
+                    ),
+                    tuple(
+                        last_indice_idx - 5, last_indice_idx - 4, last_indice_idx - 3,
+                        last_indice_idx - 2, last_indice_idx - 1, last_indice_idx
+                    )
+                )
             end
         end
     end
-    for axis in UInt8(1):UInt8(3)
-        for slice::Int32 in 1:grid_size[axis]
-            for dir in Int8.((-1, +1))
-                process_slice(axis, dir, slice)
-            end
+
+    # Dispatch a thread for every X, Y, and Z slice.
+    @threads for i in 1:sum(grid_size)
+        # Unpack the counter into a slice and its axis.
+        (axis, slice) = if i > (grid_size[1] + grid_size[2])
+            (UInt8(3), Int32(i - grid_size[1] - grid_size[2]))
+        elseif i > grid_size[2]
+            (UInt8(2), Int32(i - grid_size[1]))
+        else
+            (UInt8(1), Int32(i))
+        end
+        # Process both faces on this slice/axis.
+        for dir in Int8.((-1, +1))
+            process_slice(axis, dir, slice)
         end
     end
 
-    return tuple(vertices, indices)
-end # @inbounds
-end # calculate_mesh()
+    return nothing
+end
