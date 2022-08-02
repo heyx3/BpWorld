@@ -111,22 +111,26 @@ function update(scene::Scene, delta_seconds::Float32)
         finished_idx::Int = take!(scene.meshing_channel_to_main)
         # Did the task just finish initial voxel generation?
         if finished_idx == 0
-            set_tex_color(scene.grid_tex3d, scene.grid)
+            println("Voxel scene is completed! Uploading into texture...")
+            @time set_tex_color(scene.grid_tex3d, scene.grid)
         # Otherwise, it finished meshing a voxel layer.
         else
             @bpworld_assert(finished_idx <= length(scene.layers))
+            println("Layer ", finished_idx, " is done meshing")
 
             # Don't bother generating an empty mesh.
             if scene.mesher.n_indices > 0
-                verts = Buffer(false, @view scene.mesher.vertex_buffer[1:scene.mesher.n_vertices])
-                inds = Buffer(false, @view scene.mesher.index_buffer[1:scene.mesher.n_indices])
-                mesh = Mesh(
-                    PrimitiveTypes.triangle,
-                    [ VertexDataSource(verts, sizeof(VoxelVertex)) ],
-                    voxel_vertex_layout(1),
-                    (inds, eltype(scene.mesher.index_buffer))
-                )
-                scene.layer_meshes[finished_idx] = (verts, inds, mesh)
+                @time begin
+                    verts = Buffer(false, @view scene.mesher.vertex_buffer[1:scene.mesher.n_vertices])
+                    inds = Buffer(false, @view scene.mesher.index_buffer[1:scene.mesher.n_indices])
+                    mesh = Mesh(
+                        PrimitiveTypes.triangle,
+                        [ VertexDataSource(verts, sizeof(VoxelVertex)) ],
+                        voxel_vertex_layout(1),
+                        (inds, eltype(scene.mesher.index_buffer))
+                    )
+                    scene.layer_meshes[finished_idx] = (verts, inds, mesh)
+                end
             end
 
             put!(scene.meshing_channel_to_worker, true)
