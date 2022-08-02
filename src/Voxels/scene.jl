@@ -8,7 +8,8 @@ mutable struct Scene
 
     # In depth-only rendering, voxels can share their materials.
     # So, voxel layers are sorted by material before a depth-only pass.
-    buffer_sorted_voxel_layers::Vector{Tuple{LayerRenderer, Tuple{GL.Buffer, GL.Buffer, GL.Mesh}}}
+    buffer_sorted_voxel_layers::Vector{Tuple{LayerRenderer, GL.Program,
+                                             Union{GL.Mesh, Tuple{GL.Texture, Int}}}}
 
     # There is an ongoing Task to compute the voxels, and then each layer's mesh.
     layer_meshes::Vector{Optional{Tuple{GL.Buffer, GL.Buffer, GL.Mesh}}}
@@ -74,7 +75,7 @@ function Scene(grid_size::v3i, grid_generator::Generation.AbstractVoxelGenerator
         world_scale,
 
         assets,
-        Vector{Tuple{LayerRenderer, GL.Mesh}}(),
+        Vector{Tuple{LayerRenderer, GL.Program, Union{GL.Mesh, Tuple{GL.Texture, Int}}}}(),
 
         fill(nothing, length(assets)),
         mesher,
@@ -144,26 +145,43 @@ function render(scene::Scene, cam::Cam3D, mat_cam_viewproj::fmat4, elapsed_secon
                           scene.layers[i],
                           zero(v3f), scene.world_scale,
                           cam, elapsed_seconds, mat_cam_viewproj)
+        else
+            render_voxels(scene.grid_tex3d, i,
+                          scene.layers[i],
+                          zero(v3f), scene.world_scale,
+                          cam, elapsed_seconds, mat_cam_viewproj)
         end
     end
 
     return nothing
 end
-function render_depth_only(scene::Scene, cam::Cam3D, mat_cam_viewproj::fmat4)
+function render_depth_only(scene::Scene, renderers::LayerDepthRenderer,
+                           cam::Cam3D, mat_cam_viewproj::fmat4)
     # Sort the voxel layers by their depth-only shader, to minimize driver overhead.
+    # Assign each entry some data related to rendering.
     voxel_layers::Vector = scene.buffer_sorted_voxel_layers
     empty!(voxel_layers)
-    for (layer, resources) in zip(scene.layers, scene.layer_meshes)
+    for (layer_idx, (layer, resources)) in enumerate(zip(scene.layers, scene.layer_meshes))
+        prog = renderers.by_file[layer.shader_program_depth_only_name]
+        # Check whether or not we'll be using the preview shader.
         if exists(resources)
-            push!(voxel_layers, (layer, resources))
+            (buf1, buf2, mesh::GL.Mesh) = resources
+            push!(voxel_layers, (layer, prog.meshed, mesh))
+        else
+            push!(voxel_layers, (layer, prog.preview, (scene.grid_tex3d, layer_idx)))
         end
     end
-    sort!(voxel_layers,
-          by=(data -> GL.gl_type(get_ogl_handle(data[1].shader_program_depth_only))))
+    sort!(voxel_layers, by=(data -> GL.gl_type(GL.get_ogl_handle(data[2]))))
 
-    for (layer, (buf1, buf2, mesh)) in voxel_layers
-        render_voxels_depth_only(mesh, layer,
-                                zero(v3f), scene.world_scale,
-                                cam, mat_cam_viewproj)
+    for (layer, prog, data) in voxel_layers
+        if data isa GL.Mesh
+            render_voxels_depth_only(data, layer, renderers,
+                                    zero(v3f), scene.world_scale,
+                                    cam, mat_cam_viewproj)
+        else
+            render_voxels_depth_only(data..., layer, renderers,
+                                     zero(v3f), scene.world_scale,
+                                     cam, mat_cam_viewproj)
+        end
     end
 end

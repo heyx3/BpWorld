@@ -185,7 +185,6 @@ function World(window::GLFW.Window, assets::Assets)
     ]
 
     # Generate some voxel data.
-    voxel_size = v3i(Val(64))
     voxel_terrain = Voxels.Generation.VoxelField(
         layer = 0x1,
         threshold = @f32(0.3),
@@ -228,7 +227,7 @@ function World(window::GLFW.Window, assets::Assets)
         voxel_shape1,
         voxel_shape2
     )
-    voxel_scene = Voxels.Scene(voxel_size, voxel_final,
+    voxel_scene = Voxels.Scene(v3i(64, 64, 64), voxel_final,
                                v3f(10, 10, 10), voxel_assets)
 
     g_buffer_data = set_up_g_buffer(window_size)
@@ -317,7 +316,10 @@ end
 "Renders a depth-only pass using the given view/projection matrices."
 function render_depth_only(world::World, assets::Assets, mat_viewproj::fmat4)
     set_color_writes(Vec(false, false, false, false))
-    Voxels.render_depth_only(world.voxels, world.cam, mat_viewproj)
+    set_depth_writes(true)
+    set_depth_test(ValueTests.LessThan)
+    Voxels.render_depth_only(world.voxels, assets.prog_voxels_depth_only,
+                             world.cam, mat_viewproj)
     set_color_writes(Vec(true, true, true, true))
 end
 
@@ -370,7 +372,8 @@ function render(world::World, assets::Assets)
                                         (frustum_points_world[3] + frustum_points_world[4]) +
                                         (frustum_points_world[5] + frustum_points_world[6]) +
                                         (frustum_points_world[7] + frustum_points_world[8]))
-    voxels_world_center = world.voxels.world_scale * vsize(world.voxels.grid) / v3f(Val(2))
+    voxels_world_range = world.voxels.world_scale * vsize(world.voxels.grid)
+    voxels_world_center = voxels_world_range / v3f(Val(2))
     # Make a view matrix for the sun looking at that frustum:
     sun_world_pos = voxels_world_center
     @set! sun_world_pos -= world.sun.dir * max_exclusive(world.cam.clip_range)
@@ -379,7 +382,7 @@ function render(world::World, assets::Assets)
     # Get the bounds of the frustum in the sun's view space:
     frustum_points_sun_view = m_apply_point.(Ref(mat_sun_view), frustum_points_world)
     voxel_points_world = tuple((
-        world.voxels.world_scale * vsize(world.voxels.grid) * v3f(t...)
+        voxels_world_range * v3f(t...)
           for t in Iterators.product(0:1, 0:1, 0:1)
     )...)
     voxel_points_sun_view = m_apply_point.(Ref(mat_sun_view), voxel_points_world)

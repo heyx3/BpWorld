@@ -5,7 +5,7 @@
 "The data definition for a specific voxel material."
 struct LayerData
     # The fragment shader file.
-    # The vertex shader will always be "voxels/voxels.vert"
+    # The vertex shader will always be "voxels/meshed.vert"
     frag_shader_path::AbstractString
 
     # The textures used by this voxel asset.
@@ -59,37 +59,88 @@ StructTypes.StructType(::Type{LayerData}) = StructTypes.UnorderedStruct()
 ##   Shaders   ##
 #################
 
-"Generates a voxel shader Program with the given fragment shader"
+"
+Voxels have multiple shader programs that can render them,
+    under different circumstances.
+"
+struct VoxelPrograms
+    preview::Program
+    meshed::Program
+end
+function Base.close(vp::VoxelPrograms)
+    close(vp.preview)
+    close(vp.meshed)
+end
+
+
+"
+Generates a voxel layer's shaders, given a custom fragment shader.
+"
 function make_voxel_program(fragment_shader::AbstractString,
                             frag_shader_header::AbstractString = "",
-                            vert_shader_header::AbstractString = ""
-                           )::Program
-    #TODO: A Context service that pre-loads the voxel vertex shader and anything else that's needed
-    vertex_shader::AbstractString = open(io -> read(io, String),
-                                         joinpath(VOXELS_ASSETS_PATH, "voxels.vert"),
-                                         "r")
+                            builtin_shaders_header::AbstractString = ""
+                           )::VoxelPrograms
+    vertex_shader_preview::AbstractString = open(
+        io -> read(io, String),
+        joinpath(VOXELS_ASSETS_PATH, "preview.vert"),
+        "r"
+    )
+    vertex_shader_meshed::AbstractString = open(
+        io -> read(io, String),
+        joinpath(VOXELS_ASSETS_PATH, "meshed.vert"),
+        "r"
+    )
+    geom_shader_preview::AbstractString = open(
+        io -> read(io, String),
+        joinpath(VOXELS_ASSETS_PATH, "preview.geom"),
+        "r"
+    )
 
+    # Pre-process each shader file.
     context = ""
     try
-        context = "vertex"
-        vertex_shader = process_shader_contents(vertex_shader, vert_shader_header)
+        context = "preview vertex"
+        vertex_shader_preview = process_shader_contents(vertex_shader_preview,
+                                                        builtin_shaders_header)
+        context = "meshed vertex"
+        vertex_shader_meshed = process_shader_contents(vertex_shader_meshed,
+                                                       builtin_shaders_header)
+
+        context = "geometry"
+        geom_shader_preview = process_shader_contents(geom_shader_preview,
+                                                      builtin_shaders_header)
+
         context = "fragment"
         fragment_shader = process_shader_contents(fragment_shader, frag_shader_header)
     catch e
         error("Failed to preprocess ", context, " shader. ", e)
     end
 
-    return Program(vertex_shader, fragment_shader; flexible_mode=true)
+    # Finally, compile and return.
+    return VoxelPrograms(
+        Program(
+            vertex_shader_preview, fragment_shader
+            ;
+            geom_shader = geom_shader_preview,
+            flexible_mode = true
+        ),
+        Program(
+            vertex_shader_meshed, fragment_shader
+            ;
+            flexible_mode = true
+        )
+    )
 end
 
 
 "Assets for rendering voxel layers in a depth-only pass"
 mutable struct LayerDepthRenderer
-    by_file::Dict{AbstractString, Program}
+    by_file::Dict{AbstractString, VoxelPrograms}
+    #TODO: Let depth renderers sample from textures (e.x. for transparent-cutout)
 end
 function Base.close(ldr::LayerDepthRenderer)
-    for prog::Program in values(ldr.by_file)
-        close(prog)
+    for vp::VoxelPrograms in values(ldr.by_file)
+        close(vp)
     end
     empty!(ldr.by_file)
 end
@@ -102,7 +153,7 @@ function LayerDepthRenderer()
         full_path = joinpath(DEPTH_ONLY_PASSES_FOLDER, file)
         file_contents = open(io -> read(io, String), full_path, "r")
         return file => make_voxel_program(file_contents,
-                                          "#include <voxels/common.shader>")
+                                          "#include <voxels/common_frag.shader>")
     end))
 end
 
@@ -113,8 +164,8 @@ end
 
 "A renderable voxel material."
 mutable struct LayerRenderer
-    shader_program::Program
-    shader_program_depth_only::Program
+    shader_program::VoxelPrograms
+    shader_program_depth_only_name::AbstractString
 
     # Each texture is mapped to its uniform name.
     textures::Dict{AbstractString, Texture}
@@ -131,7 +182,7 @@ function LayerRenderer(data::LayerData, depth_only_programs::LayerDepthRenderer)
         for u_name in values(data.textures)
             print(io, "uniform sampler2D ", u_name, ";\n")
         end
-        print(io, "#include <voxels/common.shader>")
+        print(io, "#include <voxels/common_frag.shader>")
     end
     # Load the shader.
     fragment_path = joinpath(VOXELS_ASSETS_PATH, data.frag_shader_path)
@@ -139,9 +190,8 @@ function LayerRenderer(data::LayerData, depth_only_programs::LayerDepthRenderer)
         error("Fragment shader file doesn't exist: '", fragment_path, "'")
     end
     fragment_shader = open(io -> read(io, String), fragment_path, "r")
-    # Compile the Program.
-    program = make_voxel_program(fragment_shader, fragment_header,
-                                 defines)
+    # Compile the Programs.
+    programs = make_voxel_program(fragment_shader, fragment_header, defines)
 
     textures = Dict(Iterators.map(data.textures) do (path, uniform_name)
         # Check that the file exists.
@@ -178,13 +228,12 @@ function LayerRenderer(data::LayerData, depth_only_programs::LayerDepthRenderer)
               "' lists a nonexistent depth-only pass, '", data.depth_pass, "'")
     end
 
-    return LayerRenderer(program,
-                         depth_only_programs.by_file[data.depth_pass],
-                         textures)
+    return LayerRenderer(programs, data.depth_pass, textures)
 end
 
 function Base.close(a::LayerRenderer)
-    close(a.shader_program)
+    close(a.shader_program.preview)
+    close(a.shader_program.meshed)
     for tex in values(a.textures)
         close(tex)
     end
@@ -194,9 +243,12 @@ function Base.close(a::LayerRenderer)
 end
 
 
-function render_voxels_depth_only( mesh::Mesh, asset::LayerRenderer,
-                                   offset::v3f, scale::v3f,
-                                   cam::Cam3D, camera_mat_viewproj::fmat4)
+##   Helpers to set up rendering for the various voxel shader programs   ##
+
+function prepare_voxel_render( prog::Program,
+                               offset::v3f, scale::v3f,
+                               cam_mat_viewproj::fmat4
+                             )
     # Set render state.
     set_depth_writes(true)
     set_depth_test(ValueTests.LessThan)
@@ -204,43 +256,116 @@ function render_voxels_depth_only( mesh::Mesh, asset::LayerRenderer,
     #TODO: Figure out voxel triangle orientation.
     set_culling(FaceCullModes.Off)
 
-    # Set uniforms.
-    set_uniform(asset.shader_program_depth_only, "u_world_offset", offset)
-    set_uniform(asset.shader_program_depth_only, "u_world_scale", scale)
-    set_uniform(asset.shader_program_depth_only, "u_mat_viewproj", camera_mat_viewproj)
-
-    render_mesh(mesh, asset.shader_program_depth_only)
+    set_uniform(prog, "u_world_offset", offset)
+    set_uniform(prog, "u_world_scale", scale)
+    set_uniform(prog, "u_mat_viewproj", cam_mat_viewproj)
 end
-function render_voxels(mesh::Mesh, asset::LayerRenderer,
-                       offset::v3f, scale::v3f, camera::Cam3D,
-                       total_elapsed_seconds::Float32,
-                       camera_mat_viewproj::fmat4)
-    # Set render state.
-    set_depth_writes(true)
-    set_depth_test(ValueTests.LessThan)
-    set_blending(make_blend_opaque(BlendStateRGBA))
-    # Disable culling until I can make sure all triangles are oriented correctly.
-    #TODO: Figure out voxel triangle orientation.
-    set_culling(FaceCullModes.Off)
-
-    # Set uniforms.
-    set_uniform(asset.shader_program, "u_world_offset", offset)
-    set_uniform(asset.shader_program, "u_world_scale", scale)
-    set_uniform(asset.shader_program, "u_mat_viewproj", camera_mat_viewproj)
-    set_uniform(asset.shader_program, "u_camPos", camera.pos)
-    set_uniform(asset.shader_program, "u_camForward", camera.forward)
-    set_uniform(asset.shader_program, "u_camUp", camera.up)
-    set_uniform(asset.shader_program, "u_totalSeconds", total_elapsed_seconds)
+function prepare_voxel_gbuffer_render( prog::Program, asset::LayerRenderer,
+                                       cam::Cam3D, elapsed_seconds::Float32
+                                     )
+    set_uniform(prog, "u_camPos", cam.pos)
+    set_uniform(prog, "u_camForward", cam.forward)
+    set_uniform(prog, "u_camUp", cam.up)
+    set_uniform(prog, "u_totalSeconds", elapsed_seconds)
     for (u_name, texture) in asset.textures
-        set_uniform(asset.shader_program, u_name, texture)
+        set_uniform(prog, u_name, texture)
     end
+end
+function prepare_voxel_preview_render(prog::Program, voxel_grid::Texture, layer_idx::Integer)
+    set_uniform(prog, "u_nVoxels", convert(v3u, voxel_grid.size))
+    set_uniform(prog, "u_voxelGrid", voxel_grid)
+    set_uniform(prog, "u_voxelLayer", convert(UInt32, layer_idx))
+end
+
+
+##   Public interface for rendering voxels   ##
+
+"Renders a voxel layer with depth-only, using the 'meshed' shader program"
+function render_voxels_depth_only( mesh::Mesh, asset::LayerRenderer,
+                                   depth_renderers::LayerDepthRenderer,
+                                   offset::v3f, scale::v3f,
+                                   cam::Cam3D, camera_mat_viewproj::fmat4
+                                 )
+    prog::Program = depth_renderers.by_file[asset.shader_program_depth_only_name].meshed
+    prepare_voxel_render(prog, offset, scale, camera_mat_viewproj)
+    render_mesh(mesh, prog)
+end
+"Renders a voxel layer with depth-only, using the 'preview' shader program"
+function render_voxels_depth_only( voxels::Texture, layer_idx::Integer,
+                                   asset::LayerRenderer,
+                                   depth_renderers::LayerDepthRenderer,
+                                   offset::v3f, scale::v3f,
+                                   cam::Cam3D, camera_mat_viewproj::fmat4
+                                 )
+    prog::Program = depth_renderers.by_file[asset.shader_program_depth_only_name].preview
+    prepare_voxel_render(prog, offset, scale, camera_mat_viewproj)
+    prepare_voxel_preview_render(prog, voxels, layer_idx)
+
+    # Render.
+    # This is just for previews, so excessive texture deactivation/reactivation within a frame
+    #    is less painful than the mental complication of attempting to optimize that away.
+    view_activate(voxels)
+    render_mesh(
+        get_resources().empty_mesh, prog
+        ;
+        shape = PrimitiveTypes.point,
+        indexed_params = nothing,
+        elements = Box_minsize(
+            UInt32(1),
+            UInt32(prod(voxels.size))
+        )
+    )
+    view_deactivate(voxels)
+end
+
+"Renders a voxel layer, using the 'meshed' shader program"
+function render_voxels( mesh::Mesh, asset::LayerRenderer,
+                        offset::v3f, scale::v3f, camera::Cam3D,
+                        total_elapsed_seconds::Float32,
+                        camera_mat_viewproj::fmat4
+                      )
+    prog::Program = asset.shader_program.meshed
+    prepare_voxel_render(prog, offset, scale, camera_mat_viewproj)
+    prepare_voxel_gbuffer_render(prog, asset, camera, total_elapsed_seconds)
 
     # Render, and take care of texture views.
     for texture in values(asset.textures)
         view_activate(get_view(texture))
     end
-    render_mesh(mesh, asset.shader_program)
+    render_mesh(mesh, prog)
     for texture in values(asset.textures)
         view_deactivate(get_view(texture))
     end
+end
+"Renders a voxel layer, using the 'preview' shader program"
+function render_voxels( voxels::Texture, layer_idx::Integer,
+                        asset::LayerRenderer,
+                        offset::v3f, scale::v3f, camera::Cam3D,
+                        total_elapsed_seconds::Float32,
+                        camera_mat_viewproj::fmat4
+                      )
+    prog::Program = asset.shader_program.preview
+    prepare_voxel_render(prog, offset, scale, camera_mat_viewproj)
+    prepare_voxel_gbuffer_render(prog, asset, camera, total_elapsed_seconds)
+    prepare_voxel_preview_render(prog, voxels, layer_idx)
+
+    # Render, and take care of texture views.
+    for texture in values(asset.textures)
+        view_activate(get_view(texture))
+    end
+    view_activate(voxels)
+    render_mesh(
+        get_resources().empty_mesh, prog
+        ;
+        shape = PrimitiveTypes.point,
+        indexed_params = nothing,
+        elements = Box_minsize(
+            UInt32(1),
+            UInt32(prod(voxels.size))
+        )
+    )
+    for texture in values(asset.textures)
+        view_deactivate(get_view(texture))
+    end
+    view_deactivate(voxels)
 end
