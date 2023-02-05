@@ -37,7 +37,7 @@ function load_tex( full_path::AbstractString,
 
     tex_size = raw_tex_size.yx
     pixels = Matrix{TOutPixel}(undef, tex_size.data)
-    for p_out::v2i in 1:v2i(tex_size)
+    for p_out::v2i in 1:tex_size
         p_in = v2i(tex_size.y - p_out.y + Int32(1), p_out.x)
         pixels[p_out] = converter(pixels_raw[p_in], TOutPixel)
     end

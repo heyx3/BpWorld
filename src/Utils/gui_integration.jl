@@ -556,8 +556,8 @@ function service_gui_end_frame(serv::GuiService, context::Bplus.GL.Context = get
         v2f(draw_pos_min.x, draw_pos_max.y),
         v2f(draw_pos_max.x, draw_pos_min.y)
     )
-    mat_proj::fmat4 = m4_ortho(v3f(draw_pos_min, -one(Float32)),
-                               v3f(draw_pos_max, one(Float32)))
+    mat_proj::fmat4 = m4_ortho(vappend(draw_pos_min, -one(Float32)),
+                               vappend(draw_pos_max, one(Float32)))
     set_uniform(serv.render_program, "u_transform", mat_proj)
 
     # Set up render state.
@@ -763,5 +763,5 @@ function gui_spherical_vector( label, vec::v3f
     pitch_sincos = sincos(yawpitch[2])
     vec_2d = v2f(sincos(yawpitch[1])).yx * pitch_sincos[1]
     vec_z = pitch_sincos[2]
-    return radius * v3f(vec_2d, vec_z)
+    return radius * vappend(vec_2d, vec_z)
 end

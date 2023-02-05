@@ -51,8 +51,8 @@ function generate!(voxels::VoxelGrid, field_grid::VoxelBinaryField, use_threads:
         voxels[x, y, z] = EMPTY_VOXEL
     end
     if use_threads
-        vert_idcs = eachindex(@view voxels[1, 1, :])
-        horz_idcs = eachindex(@view voxels[:, :, 1])
+        vert_idcs = 1:size(grid, 2)
+        horz_idcs = one(v2i):vsize(grid).xy
         Threads.@threads for z in vert_idcs
             for (x, y) in horz_idcs
                 fill_voxel(x, y, z)
