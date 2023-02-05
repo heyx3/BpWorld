@@ -185,21 +185,12 @@ function World(window::GLFW.Window, assets::Assets)
     ]
 
     # Generate some voxel data.
-    voxel_terrain = Voxels.Generation.VoxelField(
-        layer = 0x1,
-        threshold = @f32(0.3),
-        pos_scale = v3f(2, 2, 1),
-        field = Voxels.Generation.MathField(*,
-            Voxels.Generation.ConstField(0.5),
-            Voxels.Generation.MathField(+,
-                Voxels.Generation.OctaveNoise(
-                    Voxels.Generation.RidgedPerlin(),
-                    3
-                ),
-                Voxels.Generation.BillowedPerlin(5*one(v3f))
-            )
+    voxel_terrain = Voxels.Generation.VoxelBinaryField([
+        0x1 => Bplus.Fields.@field(
+            3, Float32,
+            0.2 + (0.5 * perlin(pos * 5.0))
         )
-    )
+    ])
     voxel_shape1 = Voxels.Generation.VoxelBox(
         0x2,
         Box_minmax(v3f(Val(0.065)),
@@ -211,22 +202,24 @@ function World(window::GLFW.Window, assets::Assets)
         radius = 0.3,
         layer = 0x3
     )
-    voxel_final = Voxels.Generation.VoxelUnion(
-        Float32.([ 1.0, 2.0, 3.0 ]),
+    voxel_final = Voxels.Generation.VoxelUnion([
         Voxels.Generation.VoxelDifference(
             voxel_terrain,
-            Voxels.Generation.VoxelBox(
-                voxel_shape1.layer,
-                Box_minmax(
-                    voxel_shape1.area.min / @f32(1.3),
-                    max_inclusive(voxel_shape1.area) * @f32(1.3)
-                )
-            ),
-            @set(voxel_shape2.radius *= 1.3)
+            [
+                Voxels.Generation.VoxelBox(
+                    voxel_shape1.layer,
+                    Box_minmax(
+                        voxel_shape1.area.min / @f32(1.3),
+                        max_inclusive(voxel_shape1.area) * @f32(1.3)
+                    )
+                ),
+                @set(voxel_shape2.radius *= 1.3) # Inflated voxel sphere
+            ],
+            Set{UInt8}()
         ),
         voxel_shape1,
         voxel_shape2
-    )
+    ])
     voxel_scene = Voxels.Scene(v3i(64, 64, 64), voxel_final,
                                v3f(10, 10, 10), voxel_assets)
 

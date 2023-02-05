@@ -10,19 +10,29 @@ module Voxels
 
     const VOXELS_ASSETS_PATH = joinpath(ASSETS_PATH, "voxels")
 
-    const VoxelGrid = Array{UInt8, 3}
-    const EMPTY_VOXEL = zero(UInt8)
+    const VoxelElement = UInt8
+    const EMPTY_VOXEL = zero(VoxelElement)
 
-    # Early exports are needed for sub-modules.
-    export VOXELS_ASSETS_PATH, VoxelGrid, EMPTY_VOXEL
+    const VoxelGrid = AbstractArray{VoxelElement, 3}
+    const ConcreteVoxelGrid = Array{VoxelElement, 3}
+
+
+    # Early-export the things referenced by submodules.
+    export VOXELS_ASSETS_PATH,
+           VoxelElement, EMPTY_VOXEL,
+           VoxelGrid, ConcreteVoxelGrid
+
+    # Compile submodules.
     include("Generation/Generation.jl")
 
+    # Compile files.
     include("asset.jl")
     include("meshing.jl")
     include("scene.jl")
 
+
     export VOXELS_ASSETS_PATH,
-           VoxelGrid,
+           VoxelGrid, ConcreteVoxelGrid,
            VoxelVertex, unpack_vertex, voxel_vertex_layout,
            VoxelMesher, calculate_mesh,
            render_voxels, render_voxels_depth_only

@@ -28,7 +28,7 @@ function Scene(grid_size::v3i, grid_generator::Generation.AbstractVoxelGenerator
                world_scale::v3f,
                assets::Vector{LayerRenderer}
               )::Scene
-    grid::VoxelGrid = fill(zero(eltype(VoxelGrid)),
+    grid::VoxelGrid = fill(zero(VoxelElement),
                            grid_size...)
 
     #TODO: Check the range of voxel outputs of the generator; make sure they don't exceed the number of assets
@@ -38,7 +38,7 @@ function Scene(grid_size::v3i, grid_generator::Generation.AbstractVoxelGenerator
     meshing_channel_to_main = Channel{Int}(2)
     meshing_channel_to_worker = Channel{Bool}(2)
     voxel_task = @async begin
-        Generation.generate!(grid, grid_generator)
+        Generation.generate!(grid, grid_generator, true)
         put!(meshing_channel_to_main, 0)
 
         #TODO: Use one big buffer for the voxel data, signal back to the main thread after every slice
