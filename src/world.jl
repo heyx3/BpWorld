@@ -73,6 +73,7 @@ end
 
 mutable struct World
     voxels::Voxels.Scene
+    next_voxels::Optional{Voxels.Scene} # New scene that's currently being generated in the background.
 
     sun::SunData
     sun_gui::SunDataGui
@@ -114,7 +115,7 @@ function Base.close(s::World)
                 close(el)
             end
             empty!(v)
-        else
+        elseif exists(v) # Some fields are Optional
             close(v)
         end
     end
@@ -185,41 +186,11 @@ function World(window::GLFW.Window, assets::Assets)
     ]
 
     # Generate some voxel data.
-    voxel_terrain = Voxels.Generation.VoxelBinaryField([
-        0x1 => Bplus.Fields.@field(
-            3, Float32,
-            0.2 + (0.5 * perlin(pos * 5.0))
-        )
-    ])
-    voxel_shape1 = Voxels.Generation.VoxelBox(
-        0x2,
-        Box_minmax(v3f(Val(0.065)),
-                   v3f(Val(0.435))),
-        mode = Voxels.Generation.BoxModes.edges
-    )
-    voxel_shape2 = Voxels.Generation.VoxelSphere(
+    voxel_final = Voxels.Generation.VoxelSphere(
         center = v3f(0.25, 0.25, 0.75),
         radius = 0.3,
         layer = 0x3
     )
-    voxel_final = Voxels.Generation.VoxelUnion([
-        Voxels.Generation.VoxelDifference(
-            voxel_terrain,
-            [
-                Voxels.Generation.VoxelBox(
-                    voxel_shape1.layer,
-                    Box_minmax(
-                        voxel_shape1.area.min / @f32(1.3),
-                        max_inclusive(voxel_shape1.area) * @f32(1.3)
-                    )
-                ),
-                @set(voxel_shape2.radius *= 1.3) # Inflated voxel sphere
-            ],
-            Set{UInt8}()
-        ),
-        voxel_shape1,
-        voxel_shape2
-    ])
     voxel_scene = Voxels.Scene(v3i(64, 64, 64), voxel_final,
                                v3f(10, 10, 10), voxel_assets)
 
@@ -229,6 +200,7 @@ function World(window::GLFW.Window, assets::Assets)
     check_gl_logs("After world initialization")
     return World(
         voxel_scene,
+        nothing,
 
         SunData(),
         SunDataGui(),
@@ -302,7 +274,45 @@ function update(world::World, delta_seconds::Float32, window::GLFW.Window)
     )
     (world.cam, world.cam_settings) = cam_update(world.cam, world.cam_settings, cam_input, delta_seconds)
 
+    # Update the scene.
     Voxels.update(world.voxels, delta_seconds)
+    # See if the next scene is finished loading, and if so, replace the current scene.
+    if exists(world.next_voxels)
+        Voxels.update(world.next_voxels, delta_seconds)
+        if world.next_voxels.is_finished_setting_up
+            close(world.voxels)
+            world.voxels = world.next_voxels
+            world.next_voxels = nothing
+        end
+    end
+end
+
+"
+Processes a new scene file in the background, eventually replacing the current scene with it.
+If the scene file is invalid, returns an error message.
+Otherwise, returns `nothing` to indicate that it was accepted.
+"
+function start_new_scene(world::World, new_contents::AbstractString)::Optional{AbstractString}
+    # First try parsing the scene.
+    # If that fails, don't change the world at all.
+    local scene_expr
+    try
+        scene_expr = Meta.parse(new_contents)
+    catch e
+        return "Invalid Julia syntax: $(sprint(showerror, e))"
+    end
+    scene_generator = Voxels.Generation.eval_dsl(scene_expr)
+    if scene_generator isa Vector
+        return string(scene_generator...)
+    end
+
+    # The scene parsed correctly, so kick off its generation.
+    if exists(world.next_voxels)
+        close(world.next_voxels)
+    end
+    world.next_voxels = Voxels.Scene(v3i(64, 64, 64), scene_generator,
+                                     v3f(10, 10, 10), world.voxels.layers)
+    return nothing
 end
 
 

@@ -12,6 +12,7 @@ mutable struct Scene
                                              Union{GL.Mesh, Tuple{GL.Texture, Int}}}}
 
     # There is an ongoing Task to compute the voxels, and then each layer's mesh.
+    is_finished_setting_up::Bool
     layer_meshes::Vector{Optional{Tuple{GL.Buffer, GL.Buffer, GL.Mesh}}}
     mesher::VoxelMesher
     voxel_task::Task
@@ -77,6 +78,7 @@ function Scene(grid_size::v3i, grid_generator::Generation.AbstractVoxelGenerator
         assets,
         Vector{Tuple{LayerRenderer, GL.Program, Union{GL.Mesh, Tuple{GL.Texture, Int}}}}(),
 
+        false,
         fill(nothing, length(assets)),
         mesher,
         voxel_task,
@@ -115,6 +117,7 @@ function update(scene::Scene, delta_seconds::Float32)
             @time set_tex_color(scene.grid_tex3d, scene.grid)
         # Otherwise, it finished meshing a voxel layer.
         else
+            @bpworld_assert(!scene.is_finished_setting_up)
             @bpworld_assert(finished_idx <= length(scene.layers))
             println("Layer ", finished_idx, " is done meshing")
 
@@ -134,6 +137,11 @@ function update(scene::Scene, delta_seconds::Float32)
             end
 
             put!(scene.meshing_channel_to_worker, true)
+
+            # If this was the last layer, we're finished.
+            if finished_idx == length(scene.layers)
+                scene.is_finished_setting_up = true
+            end
         end
     # If the task is still running and Julia only has one thread,
     #    we need to manually yield our time to give the task a chance.
