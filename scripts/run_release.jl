@@ -1,4 +1,4 @@
-cd(@__DIR__)
+cd(joinpath(@__DIR__, ".."))
 
 using Pkg
 Pkg.activate(".")
