@@ -65,5 +65,45 @@ function generate!(voxels::VoxelGrid, field_grid::VoxelBinaryField, use_threads:
     end
 end
 
+# Expose to the DSL as the function 'BinaryField()'.
+#TODO: Support more complex syntax for multiple layers of blocks.
+function dsl_call(::Val{:BinaryField}, args, dsl_state::DslState)::VoxelBinaryField
+    dsl_context_block(dsl_state, "BinaryField(", args..., ")") do
+        # All arguments should be provided by name.
+        if !all(a -> Base.is_expr(a, :kw), args)
+            error("All arguments must be provided by name (e.x. 'min = a+b')")
+        end
+        if !all(a -> a.args[1] isa Symbol, args)
+            error("Argument names are malformed")
+        end
+        arg_dict = Dict{Symbol, Any}((a.args[1] => a.args[2]) for a in args)
+
+        # There are two required fields and no optional fields.
+        if length(arg_dict) != 2 || !haskey(arg_dict, :layer) || !haskey(arg_dict, :field)
+            error("BinaryField() should have exactly two arguments: 'layer' and 'field'")
+        end
+        arg_layer = Ref{Any}()
+        arg_field = Ref{Any}()
+        dsl_context_block(dsl_state, "'layer' argument") do
+            arg_layer[] = convert(VoxelElement, dsl_expression(arg_dict[:layer], dsl_state))
+        end
+        dsl_context_block(dsl_state, "'field' argument") do
+            field_syntax = arg_dict[:field]
+            # Is this a multi-field, or a single field?
+            if Base.is_expr(field_syntax, :block)
+                arg_field[] = Bplus.Fields.eval(Bplus.Fields.multi_field_macro_impl(field_syntax))
+            else
+                arg_field[] = Bplus.Fields.eval(Bplus.Fields.field_macro_impl(3, Symbol(Float32), field_syntax))
+            end
+            if !isa(arg_field[], Bplus.Fields.AbstractField{3, 1, Float32})
+                error("Failed to parse field into a 3D field of scalar values.",
+                      " It's a ", typeof(arg_field[]))
+            end
+        end
+
+        return VoxelBinaryField([ arg_layer[] => arg_field[] ])
+    end
+end
+
 
 #TODO: A 'VoxelContinuousField', using field value to interpolate through a "curve" of voxel elements. To do this, implement an "InterpCurve" type in B-Plus.

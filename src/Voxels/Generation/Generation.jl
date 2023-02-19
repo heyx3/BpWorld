@@ -1,6 +1,6 @@
 module Generation
 
-using Setfield
+using Setfield, DataStructures
 using ThreadedIterables
 using Bplus,
       Bplus.Utilities, Bplus.Math, Bplus.GL,
@@ -32,6 +32,8 @@ function generate(grid_size::Vec3{<:Integer},
 end
 
 
+include("dsl.jl")
+
 include("field.jl")
 include("shapes.jl")
 include("meta.jl")
@@ -41,6 +43,7 @@ include("meta.jl")
 export AbstractVoxelGenerator, generate!, generate,
            VoxelBinaryField,
            VoxelBox, VoxelSphere,
-           VoxelUnion, VoxelDifference, VoxelIntersection
+           VoxelUnion, VoxelDifference, VoxelIntersection,
+       eval_dsl, DslState
 
 end # module

@@ -37,6 +37,20 @@ function generate!(grid::VoxelGrid, u::VoxelUnion, use_threads::Bool)
     end
 end
 
+# Expose it to the DSL with a "Union()" call.
+function dsl_call(::Val{:Union}, args, dsl_state::DslState)::VoxelUnion
+    dsl_context_block(dsl_state, "Union(", args..., ")") do
+        arg_values = dsl_expression.(args, Ref(dsl_state))
+        if any(arg -> !isa(arg, AbstractVoxelGenerator), arg_values)
+            error("Not all arguments to 'Union()' are voxel generators: [ ",
+                  join(map(=>, args, typeof.(arg_values)), ", "),
+                  " ]")
+        end
+
+        return VoxelUnion(collect(AbstractVoxelGenerator, arg_values))
+    end
+end
+
 
 "Outputs the value of a voxel generator, *if* other generators would output nothing there."
 struct VoxelDifference <: AbstractVoxelGenerator
@@ -77,6 +91,61 @@ function generate!(grid::VoxelGrid, d::VoxelDifference, use_threads::Bool)
     end
 end
 
+# Expose it to the DSL with a "Difference()" call.
+function dsl_call(::Val{:Difference}, args, dsl_state::DslState)::VoxelDifference
+    dsl_context_block(dsl_state, "Difference(", args..., ")") do
+        # The first argument is the "main".
+        # The second argument is the "subtractors".
+        #    If there are multiple subtractors, it should be an array literal.
+        #    For user convenience when iterating, this can be omitted and then nothing is subtracted.
+        # The third argument is a set of layers to ignore, and must be named.
+        if !in(length(args), 1:3)
+            error("There should be two or three arguments: the base, and the subtractor(s),",
+                  " and optionally a list of layers to ignore.")
+        end
+
+        arg_main = Ref{Any}()
+        dsl_context_block(dsl_state, "Main Input") do
+            arg_main[] = dsl_expression(args[1], dsl_state)
+            if !isa(arg_main[], AbstractVoxelGenerator)
+                error("Argument is not a voxel generator: ", args[1], " => ", typeof(arg_main[]))
+            end
+        end
+
+        subtractors = [ ]
+        dsl_context_block(dsl_state, "Subtractors Input") do
+            if (length(args) > 1) && !Base.is_expr(args[2], :(=))
+                if Base.is_expr(args[2], :vect)
+                    append!(subtractors, dsl_expression.(args[2].args, Ref(dsl_state)))
+                else
+                    push!(subtractors, dsl_expression(args[2], dsl_state))
+                end
+            end
+            if any(s -> !isa(s, AbstractVoxelGenerator), subtractors)
+                error("Not all subtractors are voxel generators: ",
+                        join(typeof.(subtractors), ", "))
+            end
+        end
+
+        to_ignore = Set{UInt8}()
+        dsl_context_block(dsl_state, "'ignore' parameter") do
+            if (length(args) > 2) || Base.is_expr(args[end], :(=))
+                ignore_expr = args[end]
+                if !Base.is_expr(ignore_expr, :kw) || (ignore_expr.args[1] != :ignore) || !Base.is_expr(ignore_expr.args[2], :braces)
+                    error("The last optional parameter should be formatted like 'ignore = { ... }'. ", sprint(io -> dump(io, ignore_expr)))
+                else
+                    set_elements = args[end].args[2].args
+                    #TODO: Throw a more readable error if any values aren't convertible to UInt8
+                    set_values = convert.(Ref(UInt8), dsl_expression.(set_elements, Ref(dsl_state)))
+                    union!(to_ignore, set_values)
+                end
+            end
+        end
+
+        return VoxelDifference(arg_main[], subtractors, to_ignore)
+    end
+end
+
 
 "
 Outputs the intersection of several generators.
@@ -84,11 +153,9 @@ Voxels are only set to something non-empty when all generators would output the 
 "
 struct VoxelIntersection <: AbstractVoxelGenerator
     inputs::AbstractVector{AbstractVoxelGenerator}
-
-    "There must be at least one voxel generator as input."
-    VoxelIntersection(first_input::AbstractVoxelGenerator, rest_inputs::AbstractVoxelGenerator...) =
-        new([ first_input, rest_inputs... ])
 end
+VoxelIntersection(first_input::AbstractVoxelGenerator, rest_inputs::AbstractVoxelGenerator...) =
+    VoxelIntersection([ first_input, rest_inputs... ])
 
 function generate!(grid::VoxelGrid, i::VoxelIntersection, use_threads::Bool)
     # Calculate each input's voxel grid.
@@ -121,5 +188,19 @@ function generate!(grid::VoxelGrid, i::VoxelIntersection, use_threads::Bool)
         for (x, y, z) in one(v3i):vsize(grid)
             grid[x, y, z] = calculate_element(x, y, z)
         end
+    end
+end
+
+# Expose it to the DSL with a "Intersection()" call.
+function dsl_call(::Val{:Intersection}, args, dsl_state::DslState)::VoxelIntersection
+    dsl_context_block(dsl_state, "Intersection(", args..., ")") do
+        arg_values = dsl_expression.(args, Ref(dsl_state))
+        if any(arg -> !isa(arg, AbstractVoxelGenerator), arg_values)
+            error("Not all arguments to 'Intersection()' are voxel generators: [ ",
+                  join(map(=>, args, typeof.(arg_values)), ", "),
+                  " ]")
+        end
+
+        return VoxelIntersection(collect(AbstractVoxelGenerator, arg_values))
     end
 end
