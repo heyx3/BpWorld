@@ -55,7 +55,7 @@ function eval_dsl(expr, state::DslState = DslState())
         if Base.is_expr(expr, :toplevel) || Base.is_expr(expr, :block)
             return eval_dsl_top_level_sequence(expr.args, state)
         else
-            return dsl_expression(expr, state)
+            return eval_dsl_top_level_expression(expr, 1, state)
         end
     catch e
         # Build the error printout, containing nested context.
@@ -88,25 +88,25 @@ end
 
 ##    Grammar evaluators   ##
 
+"Returns the output of the given DSL code (as a series of assignment/return expressions)."
 function eval_dsl_top_level_sequence(exprs, state::DslState)
     important_exprs = filter(e -> !isa(e, LineNumberNode), exprs)
-    for (i, expr) in enumerate(important_exprs[1:(end-1)])
-        eval_dsl_expression_top_level(expr, i, state)
+    for (i, expr) in important_exprs
+        returned_result = eval_dsl_top_level_expression(expr, i, state)
+        if exists(returned_result)
+            return returned_result
+        end
     end
-    # Strip out the 'return' syntax from the last expression, then evaluate it.
-    last_expr = Base.is_expr(important_exprs[end], :return) ?
-                    important_exprs[end].args[1] :
-                    important_exprs[end]
-    return dsl_expression(last_expr, state)
+    error("No 'return' statement exists!")
 end
 
 "
 Handles a top-level DSL expression, almost always mutating `state.vars`.
-Returns whether it was a real expression, as opposed to something like a LineNumberNode.
+If it was a `return` expression, the final value is returned.
 "
-function eval_dsl_expression_top_level(expr, idx, state::DslState)::Bool
+function eval_dsl_top_level_expression(expr, idx, state::DslState)::Optional
     if expr isa LineNumberNode
-        error("Oops, LineNumberNode")
+        return nothing
     else
         return dsl_context_block(state, "Root expression ", idx) do 
             #TODO: Allow definition of functions, by treating it like a new top-level context/DslState with access to pre-existing variables.
@@ -117,11 +117,13 @@ function eval_dsl_expression_top_level(expr, idx, state::DslState)::Bool
                 else
                     state.vars[name] = dsl_expression(value_expr, state)
                 end
+            elseif Base.is_expr(expr, :return)
+                return dsl_expression(expr.args[1], state)
             else
-                error("Top-level expression must be an assignment, 'a = b', not a :",
+                error("Top-level expression must be an assignment ('a = b') or return ('return a'). It was :",
                       (expr isa Expr) ? expr.head : typeof(expr))
             end
-            return true
+            return nothing
         end
     end
 end

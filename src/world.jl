@@ -243,22 +243,26 @@ function update(world::World, delta_seconds::Float32, window::GLFW.Window)
     world.total_seconds += delta_seconds
 
     # Update inputs.
-    for input_names in fieldnames(typeof(world.inputs))
-        field_val = getfield(world.inputs, input_names)
-        if field_val isa AbstractButton
-            Bplus.Input.button_update(field_val, window)
-        elseif field_val isa AbstractAxis
-            Bplus.Input.axis_update(field_val, window)
-        else
-            error("Unhandled case: ", typeof(field_val))
+    if !CImGui.Get_WantCaptureKeyboard(CImGui.GetIO()) &&
+       (!world.is_mouse_captured || !CImGui.Get_WantCaptureMouse(CImGui.GetIO()))
+    #begin
+        for input_names in fieldnames(typeof(world.inputs))
+            field_val = getfield(world.inputs, input_names)
+            if field_val isa AbstractButton
+                Bplus.Input.button_update(field_val, window)
+            elseif field_val isa AbstractAxis
+                Bplus.Input.axis_update(field_val, window)
+            else
+                error("Unhandled case: ", typeof(field_val))
+            end
         end
-    end
-    if button_value(world.inputs.capture_mouse)
-        world.is_mouse_captured = !world.is_mouse_captured
-        GLFW.SetInputMode(
-            window, GLFW.CURSOR,
-            world.is_mouse_captured ? GLFW.CURSOR_DISABLED : GLFW.CURSOR_NORMAL
-        )
+        if button_value(world.inputs.capture_mouse)
+            world.is_mouse_captured = !world.is_mouse_captured
+            GLFW.SetInputMode(
+                window, GLFW.CURSOR,
+                world.is_mouse_captured ? GLFW.CURSOR_DISABLED : GLFW.CURSOR_NORMAL
+            )
+        end
     end
 
     # Update the camera.
