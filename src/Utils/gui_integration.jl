@@ -4,7 +4,7 @@
 #TODO: Pull into B+ eventually
 
 "
-A CImGui backend, associated with a specific `Bplus.GL.Context`.
+A CImGui backend, implemented as a B+ GL Service.
 Hooks into GLFW callbacks, so you should not hook into them youself;
     instead, use the `glfw_callback_X` fields.
 
@@ -174,7 +174,7 @@ gui_generate_mesh(verts::Buffer, indices::Buffer) = Mesh(
        ) do (i, v_type)
         return VertexAttribute(1, fieldoffset(CImGui.ImDrawVert, i), v_type)
     end,
-    (indices, CImGui.ImDrawIdx)
+    MeshIndexData(indices, CImGui.ImDrawIdx)
 )
 
 const CLIPBOARD_BUFFER = Vector{UInt8}(undef, 1024)
@@ -250,8 +250,8 @@ function service_gui_init( context::Bplus.GL.Context
     # Tell ImGui how to manipulate/query data.
     GLFW.SetCharCallback(context.window, (window::GLFW.Window, c::Char) -> begin
         # Why this range? The example code doesn't explain.
-        # It seems to constrain the char to a 2-byte range, and ignore the null terminator.
-        if c in (0x1 : (0x10000 - 1))
+        # It limits the char to a 2-byte range, and ignores the null terminator.
+        if UInt(c) in 0x1:0xffff
             CImGui.AddInputCharacter(gui_io, c)
         end
         for user_callback in serv.glfw_callbacks_char

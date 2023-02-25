@@ -130,7 +130,7 @@ function update(scene::Scene, delta_seconds::Float32)
                         PrimitiveTypes.triangle,
                         [ VertexDataSource(verts, sizeof(VoxelVertex)) ],
                         voxel_vertex_layout(1),
-                        (inds, eltype(scene.mesher.index_buffer))
+                        MeshIndexData(inds, eltype(scene.mesher.index_buffer))
                     )
                     scene.layer_meshes[finished_idx] = (verts, inds, mesh)
                 end
