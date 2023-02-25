@@ -301,7 +301,7 @@ function start_new_scene(world::World, new_contents::AbstractString)::Optional{A
     # If that fails, don't change the world at all.
     local scene_expr
     try
-        scene_expr = Meta.parse(new_contents)
+        scene_expr = Meta.parseall(new_contents)
     catch e
         return "Invalid Julia syntax: $(sprint(showerror, e))"
     end

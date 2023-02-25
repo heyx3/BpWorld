@@ -59,7 +59,7 @@ function eval_dsl(expr, state::DslState = DslState())
         end
     catch e
         # Build the error printout, containing nested context.
-        context_msg = [ "Error '", e, "'. Context:\n" ]
+        context_msg = Any[ "Error '", sprint(showerror, e), "'. Context:\n" ]
         context_start_idx::Int = length(context_msg) + 1
         for (shallowness::Int, context_item::Tuple) in enumerate(state.context)
             # insert!() only takes one element at a time, so we have to insert things in backwards order.
@@ -91,7 +91,7 @@ end
 "Returns the output of the given DSL code (as a series of assignment/return expressions)."
 function eval_dsl_top_level_sequence(exprs, state::DslState)
     important_exprs = filter(e -> !isa(e, LineNumberNode), exprs)
-    for (i, expr) in important_exprs
+    for (i, expr) in enumerate(important_exprs)
         returned_result = eval_dsl_top_level_expression(expr, i, state)
         if exists(returned_result)
             return returned_result

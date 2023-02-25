@@ -56,7 +56,7 @@ terrain = Difference(
 )
 
 # Combine the terrain with the box and sphere.
-return Union(box, sph, terrain)
+return Union(box, sphere, terrain)
     """), fill(zero(UInt8), 2048))
     scene_string_changed::Bool = true
     last_scene_buffer_update_time::UInt64 = 0
