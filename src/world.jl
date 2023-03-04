@@ -81,6 +81,9 @@ mutable struct World
     fog::FogData
     fog_gui::FogDataGui
 
+    scene::SceneData
+    scene_gui::SceneDataGui
+
     sun_viewproj::fmat4 # Updated every frame
     target_shadowmap::Target
     target_tex_shadowmap::Texture
@@ -104,7 +107,7 @@ function Base.close(s::World)
     # This is the safest option to avoid leaks.
     blacklist = tuple(:total_seconds,
                       :sun_viewproj,
-                      :sun, :sun_gui, :fog, :fog_gui,
+                      :sun, :sun_gui, :fog, :fog_gui, :scene, :scene_gui,
                       :cam, :cam_settings, :is_mouse_captured, :inputs,
                       :buffers)
     whitelist = setdiff(fieldnames(typeof(s)), blacklist)
@@ -197,16 +200,19 @@ function World(window::GLFW.Window, assets::Assets)
     g_buffer_data = set_up_g_buffer(window_size)
     sun_shadowmap_data = set_up_sun_shadowmap(v2i(1024, 1024))
 
+    gui_sun = SunData()
+    gui_fog = FogData()
+    gui_scene = SceneData()
+
     check_gl_logs("After world initialization")
     return World(
         voxel_scene,
         nothing,
 
-        SunData(),
-        SunDataGui(),
-
-        FogData(),
-        FogDataGui(),
+        #TODO: Save GUI data on close, load it again on start
+        gui_sun, init_gui_state(gui_sun),
+        gui_fog, init_gui_state(gui_fog),
+        gui_scene, init_gui_state(gui_scene),
 
         m_identityf(4, 4),
         sun_shadowmap_data...,

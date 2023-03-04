@@ -15,7 +15,7 @@ using .Utils
 include("Voxels/Voxels.jl")
 using .Voxels
 
-include("data.jl")
+include("gui_data.jl")
 include("assets.jl")
 include("world.jl")
 include("post_process.jl")
