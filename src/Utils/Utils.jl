@@ -49,18 +49,12 @@ end
 
 include("shaders.jl")
 include("textures.jl")
-include("gui_integration.jl")
 
 
 export @bpworld_assert, @bpworld_debug,
        @omit_type,
        check_gl_logs,
        ASSETS_PATH, process_shader_contents,
-       pixel_converter, load_tex,
-       service_gui_init, service_gui_get,
-          service_gui_start_frame, service_gui_end_frame,
-          gui_tex,
-       gui_window, gui_with_item_width, gui_with_unescaped_tabbing, gui_within_tree_node,
-          gui_spherical_vector
+       pixel_converter, load_tex
 
-end
+end # module

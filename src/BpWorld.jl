@@ -7,7 +7,7 @@ using GLFW, ModernGL, CImGui,
 
 using Bplus,
       Bplus.Utilities, Bplus.Math, Bplus.GL,
-      Bplus.Helpers, Bplus.SceneTree, Bplus.Input
+      Bplus.Helpers, Bplus.SceneTree, Bplus.Input, Bplus.GUI
 
 include("Utils/Utils.jl")
 using .Utils
