@@ -59,7 +59,7 @@ function eval_dsl(expr, state::DslState = DslState())
         end
     catch e
         # Build the error printout, containing nested context.
-        context_msg = Any[ "Error '", sprint(showerror, e), "'. Context:\n" ]
+        context_msg = Any[ "Error, in the following location:\n" ]
         context_start_idx::Int = length(context_msg) + 1
         for (shallowness::Int, context_item::Tuple) in enumerate(state.context)
             # insert!() only takes one element at a time, so we have to insert things in backwards order.
@@ -82,6 +82,7 @@ function eval_dsl(expr, state::DslState = DslState())
                 insert!(context_msg, context_start_idx, "  ")
             end
         end
+        push!(context_msg, "\n", sprint(showerror, e))
         return context_msg
     end
 end

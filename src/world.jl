@@ -188,21 +188,17 @@ function World(window::GLFW.Window, assets::Assets)
                              assets.prog_voxels_depth_only)
     ]
 
+    gui_sun = SunData()
+    gui_fog = FogData()
+    gui_scene = SceneData()
+
     # Generate some voxel data.
-    voxel_final = Voxels.Generation.VoxelSphere(
-        center = v3f(0.25, 0.25, 0.75),
-        radius = 0.3,
-        layer = 0x3
-    )
-    voxel_scene = Voxels.Scene(v3i(64, 64, 64), voxel_final,
+    voxels = Voxels.Generation.eval_dsl(Meta.parseall(gui_scene.contents))
+    voxel_scene = Voxels.Scene(v3i(64, 64, 64), voxels,
                                v3f(10, 10, 10), voxel_assets)
 
     g_buffer_data = set_up_g_buffer(window_size)
     sun_shadowmap_data = set_up_sun_shadowmap(v2i(1024, 1024))
-
-    gui_sun = SunData()
-    gui_fog = FogData()
-    gui_scene = SceneData()
 
     check_gl_logs("After world initialization")
     return World(

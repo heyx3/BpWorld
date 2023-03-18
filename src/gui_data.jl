@@ -106,6 +106,8 @@ end
 
 "All information needed to drive the scene editor gui"
 Base.@kwdef mutable struct SceneData <:GuiData
+    current_file_path::Optional{Vector{String}} = nothing
+
     contents::String = """
 # Add a box. Later we will use the inflated box to mask out some terrain.
 box_min = { 0.065 }.xxx
@@ -153,13 +155,34 @@ return Union(box, sphere, terrain)"""
 end
 StructTypes.StructType(::Type{SceneData}) = StructTypes.Mutable()
 
+"A 'leaf' node in the file tree."
+struct SceneFile end
+"A non-leaf node in the file tree."
+mutable struct SceneFolder
+    contents::Dict{String, Union{SceneFile, SceneFolder}}
+    SceneFolder(contents = Dict{String, Union{SceneFile, SceneFolder}}()) = new(contents)
+    function SceneFolder(path::AbstractString)
+        # Map the contents of this directory.
+        return SceneFolder(Dict(Iterators.map(readdir(path, sort=false)) do name::AbstractString
+            if isfile(joinpath(path, name))
+                return name => SceneFile()
+            else
+                return name => SceneFolder(joinpath(path, name))
+            end
+        end))
+    end
+end
+
 @bp_enum SceneState ready compiling error
 Base.@kwdef mutable struct SceneDataGui <: GuiState
     scene_buffer::Vector{UInt8}
+
     scene_changed::Bool = true
     last_update_time::UInt64 = 0
     parse_error_msg::Optional{String} = nothing
     parse_state::E_SceneState = SceneState.ready
+
+    scene_folder_tree::SceneFolder = SceneFolder(SCENES_PATH)
 end
 function init_gui_state(data::SceneData)
     buffer = Vector{UInt8}(data.contents)
@@ -180,7 +203,88 @@ function gui_scene(func_try_compile_scene, # (String) -> Optional{String} : retu
         CImGui.PushID(id)
     end
 
+    # Provide a GUI for picking the scene file.
+    if CImGui.Button("Refresh Scene Files")
+        state.scene_folder_tree = SceneFolder(SCENES_PATH)
+    end
+    # Use recursion to display the file hierarchy under the root scene folder.
+    function gui_scene_folder(path::AbstractString, name::AbstractString,
+                              folder::SceneFolder,
+                              # The 'current_path_selection' is relative to its current folder
+                              #    (recusive calls will peel off the first element, or pass `nothing`).
+                              current_path_selection::Optional{AbstractVector{<:AbstractString}},
+                              # The path of this folder within the root scene folder.
+                              relative_path::Vector{<:AbstractString}
+                             )::Optional{Vector{<:AbstractString}} # Returns the new selected file
+        new_selection = Ref{Optional{Vector{<:AbstractString}}}(nothing)
+        gui_within_fold(name) do
+            # Display folders.
+            for (name, sub_folder) in folder.contents
+                if sub_folder isa SceneFolder
+                    if exists(current_path_selection) && (current_path_selection[1] == name)
+                        inner_current_selection = @view inner_current_selection[2:end]
+                    else
+                        inner_current_selection = nothing
+                    end
+                    inner_selection = gui_scene_folder(join(path, name), name,
+                                                       sub_folder,
+                                                       inner_current_selection,
+                                                       vcat(relative_path, name))
+                    if exists(inner_selection)
+                        insert!(inner_selection, 1, name)
+                        new_selection[] = inner_selection
+                        current_path_selection = nothing # Nobody else will care now
+                    end
+                end
+            end
+            # Display files.
+            for (name, file) in folder.contents
+                if file isa SceneFile
+                    #TODO: Use the following snippet to highlight a selected file:
+                    # if (length(current_path_selection) == 1) && current_path_selection[1] == name
+                    #     add_highlight_to_next_item()
+                    # end
+                    if CImGui.Button(name)
+                        new_selection[] = [ name ]
+                    end
+                    CImGui.SameLine(0, 50)
+                    #TODO: Display dialog before opening or overwriting. Make an inline dialog for simplicity.
+                    if CImGui.Button("Open")
+                        full_path = joinpath(path, name)
+                        open(joinpath(path, name), "r") do file::IO
+                            scene.contents = read(file, String)
+                        end
+                        # Update the string buffer.
+                        resize!(state.scene_buffer,
+                                max(length(state.scene_buffer), length(scene.contents) + 1))
+                        copyto!(state.scene_buffer, scene.contents)
+                        state.scene_buffer[length(scene.contents) + 1] = 0x0
+                        # Reset the "edit" counter.
+                        state.last_update_time = time_ns()
+                        state.scene_changed = true
+                        # Select this file.
+                        scene.current_file_path = vcat(relative_path, name)
+                        println("Selecting: ", scene.current_file_path)
+                    end
+                    CImGui.SameLine(0, 50)
+                    if CImGui.Button("Overwrite")
+                        open(joinpath(path, name), "w") do file::IO
+                            print(file, scene.contents)
+                        end
+                    end
+                end
+            end
+        end
+
+        return new_selection[]
+    end
+    gui_scene_folder(SCENES_PATH, "Scene Files",
+                     state.scene_folder_tree,
+                     scene.current_file_path,
+                     AbstractString[ ])
+
     #TODO: Figure out how to use the "resize" callback
+    #TODO: Auto-detect file updates and load them in, so users can use VScode or other nice editors
     just_changed::Bool = @c CImGui.InputTextMultiline(
         "Code",
         &state.scene_buffer[0], length(state.scene_buffer),
@@ -201,7 +305,6 @@ function gui_scene(func_try_compile_scene, # (String) -> Optional{String} : retu
         last_idx = findfirst(iszero, state.scene_buffer) - 1
         scene.contents = String(@view state.scene_buffer[1:last_idx])
         state.parse_error_msg = func_try_compile_scene(scene.contents)
-        # gui.scene_parse_error_msg = start_new_scene(world, scene_str)
 
         state.scene_changed = false
         state.parse_state = exists(state.parse_error_msg) ? SceneState.error : SceneState.ready
