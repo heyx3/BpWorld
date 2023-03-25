@@ -104,6 +104,7 @@ function dsl_call(::Val{:BinaryField}, args, dsl_state::DslState)::VoxelBinaryFi
         return VoxelBinaryField([ arg_layer[] => arg_field[] ])
     end
 end
+dsl_copy(vbf::VoxelBinaryField) = VoxelBinaryField(copy(vbf.layers))
 
 
 #TODO: A 'VoxelContinuousField', using field value to interpolate through a "curve" of voxel elements. To do this, implement an "InterpCurve" type in B-Plus.

@@ -12,7 +12,7 @@ macro test_dsl(description, expected, expr, exact_match...)
     expr_expr = Expr(:quote, expr)
     return quote
         expr = $expr_expr
-        actual = eval_dsl(expr)
+        actual = Base.isexpr(expr, :block) ? eval_dsl(expr) : dsl_expression(expr, DslState())
         matches = $exact_match ? (actual === $expected) : (actual == $expected)
         if matches
             @test true
@@ -68,12 +68,17 @@ end
                       (false & true) ⊻ false,
                       (true & true) ⊻ true),
                   ({ true, false, true } & { false, true, true }) ⊻ { true, false, true })
+
+        @test_dsl("Trivial copy()", 5, copy(5))
+        @test_dsl("Trivial copy() 2", Vec(2, 3, 4, 5), copy({ 2, 3, 4, 5 }))
+        @test_dsl("Trivial copy() 3", 7, copy(2 + 5))
+        #TODO: More copy() tests
     end
 
     @testset "Making Voxel Generators with the DSL" begin
 
         function test_generator(to_do, generator_expr, description...)
-            generator = eval_dsl(generator_expr)
+            generator = dsl_expression(generator_expr, DslState())
             if generator isa Vector
                 @test false == string("Error making ", description..., ": ", generator...)
             else

@@ -44,6 +44,6 @@ export AbstractVoxelGenerator, generate!, generate,
            VoxelBinaryField,
            VoxelBox, VoxelSphere,
            VoxelUnion, VoxelDifference, VoxelIntersection,
-       eval_dsl, DslState
+           DslState, eval_dsl, dsl_expression
 
 end # module

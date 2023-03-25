@@ -141,6 +141,43 @@ dsl_julia_expr(v::Val, expr_args, dsl_state) = error("Unexpected expression type
 "Given some kind of function or operator call, evaluate and return its value."
 dsl_call(v::Val, args, dsl_state) = error("Unknown function/operator '", val_type(v), "'")
 
+"
+Applies the given changes to `src`.
+Examples of changes:
+  * `radius *= 0.5` translates to `:radius => (:*= => 0.5)`
+  * `min = 1+2` translates to `:min => (:(=) => :( 1 + 2 ))`
+
+Default behavior: calls `dsl_copy(src)`, then attempts to set the copy's properties if any are provided.
+"
+dsl_copy(src, changes::Dict{Any, Pair{Symbol, Any}}, dsl_state) = let dest = Ref(dsl_copy(src))
+    for (prop_name, (modification, rhs)) in changes
+        #TODO: If prop_name is something other than a symbol, assume it's a key/index into a collection
+        dsl_context_block(dsl_state, "Property ", :prop_name) do
+            rhs_value = dsl_expression(rhs, dsl_state)
+            new_value = if modification == :(=)
+                            rhs_value
+                        elseif haskey(ASSIGNMENT_INNER_OP, modification)
+                            calculator_func = eval(:( (arg, rhs) ->
+                                $(ASSIGNMENT_INNER_OP[modification])(arg.$prop_name, rhs)
+                            ))
+                            calculator_func(dest, rhs_value)
+                        else
+                            error("Unsupported operator: ", modification)
+                        end
+            if ismutable(dest[])
+                setproperty!(dest[], prop_name, new_value)
+            else
+                assignment = merge(NamedTuple(), tuple(prop_name => new_value))
+                dest = Setfield.setproperties(dest, assignment)
+            end
+        end
+    end
+    return dest[]
+end
+
+"Overload this for making copies of data."
+dsl_copy(value) = copy(value)
+dsl_copy(value::Union{ScalarBits, Vec}) = value
 
 
 ##   Core implementations   ##
@@ -235,14 +272,14 @@ for scalar_func in [ :+, :-, :*, :/, :%, :^, :÷,
 end
 
 
-#Generate basic vector expressions.
+# Generate basic vector expressions.
 for vector_func in [ :vdot, :vcross, :⋅, :×, :∘,
                      :vlength, :vlength_sqr,
                      :vdist, :vdist_sqr,
                      :vnorm
                    ]
     @eval dsl_call(::Val{$(QuoteNode(vector_func))}, args, dsl_state) =
-            $vector_func(eval_dsl.(args, Ref(dsl_state))...)
+            $vector_func(dsl_expression.(args, Ref(dsl_state))...)
 end
 
 
@@ -275,8 +312,23 @@ dsl_call(::Val{:Int}, args, dsl_state) = dsl_call(Val(:Int64), args, dsl_state)
 dsl_call(::Val{:Float}, args, dsl_state) = dsl_call(Val(:Float32), args, dsl_state)
 dsl_call(::Val{:Double}, args, dsl_state) = dsl_call(Val(:Float64), args, dsl_state)
 
+function dsl_call(::Val{:copy}, args, dsl_state)
+    src_value = dsl_context_block(dsl_state, "Source value") do
+        dsl_expression(args[1], dsl_state)
+    end
+    modifications = Dict{Any, Pair{Symbol, Any}}(map(enumerate(args[2:end])) do i, arg
+        dsl_context_block(dsl_state, "Arg ", i) do
+            if !isa(arg, Expr) || (!Base.isexpr(arg, :(=)) && !in(arg.head, ASSIGNMENT_INNER_OP))
+                error("Expected an assignment expression, like 'x += 5').")
+            end
+            return arg.args[1] => (arg.head => arg.args[2])
+        end
+    end)
+    return dsl_copy(src_value, modifications, dsl_state)
+end
 
 
 #TODO: DslState holds a PRNG, and "rand([min][, max])" function is implemented using it
 #TODO: Add noise (e.x. perlin) after the above TODO is done
-#TODO: "copy()" asks VoxelGenerators to copy themselves but with a set of field changes. Like @set
+#TODO: Simple loop (e.x. "repeat(1:10) do i ... end")
+#TODO: Special mutations of existing variables (e.x. "push!(my_arr, 5 + 8)")

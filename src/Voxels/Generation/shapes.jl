@@ -116,6 +116,7 @@ function dsl_call(::Val{:Sphere}, args, dsl_state::DslState)::VoxelSphere
                            invert = arg_invert[])
     end
 end
+dsl_copy(s::VoxelSphere) = VoxelSphere(s.center, s.radius, s.surface_thickness, s.layer, s.invert)
 
 
 @bp_enum BoxModes filled surface edges corners
@@ -296,3 +297,5 @@ function dsl_call(::Val{:Box}, args, dsl_state::DslState)::VoxelBox
         end
     end
 end
+#TODO: If copy() is changing the mode, we need to return a different type of box.
+dsl_copy(b::VoxelBox) = typeof(s)(b.area, b.layer, b.invert)

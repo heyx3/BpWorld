@@ -50,6 +50,7 @@ function dsl_call(::Val{:Union}, args, dsl_state::DslState)::VoxelUnion
         return VoxelUnion(collect(AbstractVoxelGenerator, arg_values))
     end
 end
+dsl_copy(u::VoxelUnion) = VoxelUnion(map(dsl_copy, u.inputs))
 
 
 "Outputs the value of a voxel generator, *if* other generators would output nothing there."
@@ -145,6 +146,9 @@ function dsl_call(::Val{:Difference}, args, dsl_state::DslState)::VoxelDifferenc
         return VoxelDifference(arg_main[], subtractors, to_ignore)
     end
 end
+dsl_copy(d::VoxelDifference) = VoxelDifference(dsl_copy(d.main),
+                                               map(dsl_copy, d.subtractors),
+                                               copy(d.to_ignore))
 
 
 "
@@ -204,3 +208,4 @@ function dsl_call(::Val{:Intersection}, args, dsl_state::DslState)::VoxelInterse
         return VoxelIntersection(collect(AbstractVoxelGenerator, arg_values))
     end
 end
+dsl_copy(i::VoxelIntersection) = VoxelIntersection(map(dsl_copy, i.inputs))
