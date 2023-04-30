@@ -153,20 +153,7 @@ dsl_copy(src, changes::Dict{Any, Pair{Symbol, Any}}, dsl_state) = let dest = Ref
     for (prop_name, (modification, rhs)) in changes
         #TODO: If prop_name is something other than a symbol, assume it's a key/index into a collection
         dsl_context_block(dsl_state, "Property ", :prop_name) do
-            rhs_value = dsl_expression(rhs, dsl_state)
-            new_value = if modification == :(=)
-                            rhs_value
-                        elseif haskey(ASSIGNMENT_INNER_OP, modification)
-                            dynamic_modify(modification, getproperty(dest[], prop_name), rhs_value)
-                        else
-                            error("Unsupported operator: ", modification)
-                        end
-            if ismutable(dest[])
-                setproperty!(dest[], prop_name, new_value)
-            else
-                assignment = merge(NamedTuple(), tuple(prop_name => new_value))
-                dest[] = Setfield.setproperties(dest[], assignment)
-            end
+            dsl_copy_field(dest, prop_name, modification, rhs, dsl_state)
         end
     end
     return dest[]
@@ -230,6 +217,31 @@ function dsl_julia_expr(::Val{:.}, args, dsl_state::DslState)
     end
 
     return Bplus.Math.swizzle(value, component_expr)
+end
+
+"
+Performs a modification to an object's property by some value, e.x. `mySphere.radius *= 5`.
+Designed for use by `dsl_copy()`.
+"
+function dsl_copy_field(dest::Ref, prop_name::Symbol,
+                        modification::Symbol, rhs_expr,
+                        dsl_state::DslState
+                       )::Nothing
+    rhs_value = dsl_expression(rhs_expr, dsl_state)
+    new_value = if modification == :(=)
+                    rhs_value
+                elseif haskey(ASSIGNMENT_INNER_OP, modification)
+                    dynamic_modify(modification, getproperty(dest[], prop_name), rhs_value)
+                else
+                    error("Unsupported operator: ", modification)
+                end
+    if ismutable(dest[])
+        setproperty!(dest[], prop_name, new_value)
+    else
+        assignment = merge(NamedTuple(), tuple(prop_name => new_value))
+        dest[] = Setfield.setproperties(dest[], assignment)
+    end
+    nothing
 end
 
 

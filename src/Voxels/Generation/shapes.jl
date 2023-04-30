@@ -121,14 +121,19 @@ dsl_copy(s::VoxelSphere) = VoxelSphere(s.center, s.radius, s.surface_thickness, 
 
 @bp_enum BoxModes filled surface edges corners
 
-Base.@kwdef struct VoxelBox{TMode<:Val} <: AbstractVoxelGenerator
+struct VoxelBox{TMode<:Val} <: AbstractVoxelGenerator
     area::Box3Df
     layer::VoxelElement
-    invert::Bool = false
+    invert::Bool
 end
-@inline VoxelBox(mode::E_BoxModes; kw...) = VoxelBox{Val{mode}}(;
-    kw...
-)
+VoxelBox(mode::E_BoxModes = BoxModes.filled
+         ;
+         area::Box3Df,
+         layer::VoxelElement,
+         invert::Bool = false) = VoxelBox{Val{mode}}(area, layer, invert)
+
+# The type parameter is needed when Setfield invokes the default constructor.
+Setfield.ConstructionBase.constructorof(T::Type{<:VoxelBox}) = T
 
 box_mode(::VoxelBox{Val{T}}) where {T} = T
 
@@ -221,9 +226,10 @@ function dsl_call(::Val{:Box}, args, dsl_state::DslState)::VoxelBox
         end
         delete!(arg_dict, :layer)
 
-        # Exactly two of the following fields are required: 'min', 'max', and 'size'.
+        # Exactly two of the following fields are required: 'min', 'max', 'center', and 'size'.
         arg_min = Ref{Any}()
         arg_max = Ref{Any}()
+        arg_center = Ref{Any}()
         arg_size = Ref{Any}()
         dsl_context_block(dsl_state, "'min' argument") do
             if haskey(arg_dict, :min)
@@ -235,22 +241,33 @@ function dsl_call(::Val{:Box}, args, dsl_state::DslState)::VoxelBox
                 arg_max[] = convert(v3f, dsl_expression(arg_dict[:max], dsl_state))
             end
         end
+        dsl_context_block(dsl_state, "'center' argument") do
+            if haskey(arg_dict, :center)
+                arg_center[] = convert(v3f, dsl_expression(arg_dict[:center], dsl_state))
+            end
+        end
         dsl_context_block(dsl_state, "'size' argument") do
             if haskey(arg_dict, :size)
                 arg_size[] = convert(v3f, dsl_expression(arg_dict[:size], dsl_state))
             end
         end
-        if count(isassigned, (arg_min, arg_max, arg_size)) != 2
-            error("Exactly two of the following three parameters must be given to Box():",
-                  " 'min', 'max', 'size'")
+        if count(isassigned, (arg_min, arg_max, arg_center, arg_size)) != 2
+            error("Exactly two of the following parameters must be given to Box():",
+                  " 'min', 'max', 'center', 'size'")
         end
-        delete!.(Ref(arg_dict), (:min, :max, :size))
+        delete!.(Ref(arg_dict), (:min, :max, :center, :size))
         arg_bounds = if all(isassigned, (arg_min, arg_max))
                          Box_minmax(arg_min[], arg_max[])
                      elseif all(isassigned, (arg_min, arg_size))
                          Box_minsize(arg_min[], arg_size[])
                      elseif all(isassigned, (arg_max, arg_size))
                          Box_maxsize(arg_max[], arg_size[])
+                     elseif all(isassigned, (arg_min, arg_center))
+                         Box_minsize(arg_min[], 2 * (arg_center[] - arg_min[]))
+                     elseif all(isassigned, (arg_max, arg_center))
+                         Box_maxsize(arg_max[], 2 * (arg_max[] - arg_center[]))
+                     elseif all(isassigned, (arg_center, arg_size))
+                         Box_centersize(arg_center[], arg_size[])
                      else
                          error(arg_min, "  ", arg_max, "  ", arg_size)
                      end
@@ -296,5 +313,148 @@ function dsl_call(::Val{:Box}, args, dsl_state::DslState)::VoxelBox
         end
     end
 end
-#TODO: If copy() is changing the mode, we need to return a different type of box.
 dsl_copy(b::VoxelBox) = typeof(b)(b.area, b.layer, b.invert)
+
+# copy() has special behavior for 'mode', and sub-properties of its 'area' property.
+function dsl_copy(src::VoxelBox, changes::Dict{Any, Pair{Symbol, Any}}, dsl_state::DslState)::VoxelBox
+    let dest = Ref{VoxelBox}(src)
+        # Handle the special properties, and remove them from 'changes' as we go.
+        dsl_context_block(dsl_state, "'mode' modification") do
+            if haskey(changes, :mode)
+                (modification, rhs_expr) = changes[:mode]
+                delete!(changes, :mode)
+
+                # Error-checking:
+                if !isa(rhs_expr, Symbol)
+                    error("'mode' argument must be one of the following: ",
+                            join(Symbol.(BoxModes.instances()), ", "),
+                            ". Got: ", rhs_expr)
+                elseif modification != :(=)
+                    error("'mode' can only be set to a value; you tried to perform '",
+                            modification, "' on it")
+                end
+
+                # Parse the mode.
+                new_mode::Optional{E_BoxModes} = nothing
+                try
+                    new_mode = BoxModes.from(Val(rhs_expr))
+                catch e
+                    error("Unknown voxel box mode: '", rhs_expr, "'")
+                end
+
+                # Set the mode, by making a new Box of that mode with all the same field values.
+                field_values = NamedTuple()
+                for f::Symbol in fieldnames(typeof(dest[]))
+                    field_values = merge(field_values, tuple(f => getfield(dest[], f)))
+                end
+                dest[] = Setfield.setproperties(VoxelBox(new_mode, area=Box3Df(v3f(), v3f()), layer=0x0),
+                                                field_values)
+            end
+        end
+        dsl_context_block(dsl_state, "'min' modification") do
+            if haskey(changes, :min)
+                (modification, rhs_expr) = changes[:min]
+                delete!(changes, :min)
+                rhs_value = dsl_expression(rhs_expr, dsl_state)
+
+                # Error-checking:
+                if !isa(rhs_value, Union{Vec{3}, Vec{1}, Real})
+                    error("The property  is being modified with ", rhs_value, ", not a number or vector")
+                end
+
+                # Arg processing:
+                if rhs_value isa Vec{1}
+                    rhs_value = rhs_value.xxx
+                elseif rhs_value isa Real
+                    rhs_value = v3f(rhs_value, rhs_value, rhs_value)
+                end
+                new_value = dynamic_modify(modification, dest[].area.min, rhs_value)
+
+                # Set the min, leaving max unchanged.
+                dest[] = Setfield.setproperties(dest[], (
+                    area=Box_minmax(new_value, max_inclusive(dest[].area))
+                ))
+            end
+        end
+        dsl_context_block(dsl_state, "'max' modification") do
+            if haskey(changes, :max)
+                (modification, rhs_expr) = changes[:max]
+                delete!(changes, :max)
+                rhs_value = dsl_expression(rhs_expr, dsl_state)
+
+                # Error-checking:
+                if !isa(rhs_value, Union{Vec{3}, Vec{1}, Real})
+                    error("The property is being modified with ", rhs_value, ", not a number or vector")
+                end
+
+                # Arg processing:
+                if rhs_value isa Vec{1}
+                    rhs_value = rhs_value.xxx
+                elseif rhs_value isa Real
+                    rhs_value = v3f(rhs_value, rhs_value, rhs_value)
+                end
+                new_value = dynamic_modify(modification, max_inclusive(dest[].area), rhs_value)
+
+                # Set the max, leaving min unchanged.
+                dest[] = Setfield.setproperties(dest[], (
+                    area=Box_minmax(dest[].area.min, new_value)
+                ))
+            end
+        end
+        dsl_context_block(dsl_state, "'center' modification") do
+            if haskey(changes, :center)
+                (modification, rhs_expr) = changes[:center]
+                delete!(changes, :center)
+                rhs_value = dsl_expression(rhs_expr, dsl_state)
+
+                # Error-checking:
+                if !isa(rhs_value, Union{Vec{3}, Vec{1}, Real})
+                    error("The property is being modified with ", rhs_value, ", not a number or vector")
+                end
+
+                # Arg processing:
+                if rhs_value isa Vec{1}
+                    rhs_value = rhs_value.xxx
+                elseif rhs_value isa Real
+                    rhs_value = v3f(rhs_value, rhs_value, rhs_value)
+                end
+                new_value = dynamic_modify(modification, center(dest[].area), rhs_value)
+
+                # Set the center, leaving the size unchanged.
+                dest[] = Setfield.setproperties(dest[], (
+                    area=Box_centersize(new_value, dest[].area.size)
+                ))
+            end
+        end
+        dsl_context_block(dsl_state, "'size' modification") do
+            if haskey(changes, :size)
+                (modification, rhs_expr) = changes[:size]
+                delete!(changes, :size)
+                rhs_value = dsl_expression(rhs_expr, dsl_state)
+
+                # Error-checking:
+                if !isa(rhs_value, Union{Vec{3}, Vec{1}, Real})
+                    error("The property is being modified with ", rhs_value, ", not a number or vector")
+                end
+
+                # Arg processing:
+                if rhs_value isa Vec{1}
+                    rhs_value = rhs_value.xxx
+                elseif rhs_value isa Real
+                    rhs_value = v3f(rhs_value, rhs_value, rhs_value)
+                end
+                new_value = dynamic_modify(modification, dest[].area.size, rhs_value)
+
+                # Set the size, leaving the center unchanged.
+                dest[] = Setfield.setproperties(dest[], (
+                    area=Box_centersize(center(dest[].area), new_value)
+                ))
+            end
+        end
+
+        # Finally, handle any normal property changes.
+        return invoke(dsl_copy,
+                      Tuple{Any, typeof(changes), Any},
+                      dest[], changes, dsl_state)
+    end
+end

@@ -87,13 +87,13 @@ end
                               radius=3,
                               layer=0x7f)))
         @test_dsl("copy() a generator with no changes 2",
-                  VoxelBox(BoxModes.filled,
+                  VoxelBox(BoxModes.edges,
                            area=Box_minmax(v3f(1, 2, 3), v3f(4, 6, 8)),
                            layer=0xb0),
                   copy(Box(layer=0xb0,
                            min={1, 2, 3},
                            max={4, 6, 8},
-                           mode=filled)))
+                           mode=edges)))
         @test_dsl("copy() a nested generator with no changes",
                   VoxelUnion([ VoxelBox(BoxModes.filled,
                                         area=Box_minmax(v3f(1, 2, 3), v3f(4, 6, 8)),
@@ -127,6 +127,35 @@ end
                        center /= 2,
                        radius -= 3.5,
                        layer += 0x0a))
+        @test_dsl("copy() box's special properties (min)",
+                  VoxelBox(
+                      area=Box_minmax(v3f(3, 3, 3), v3f(13, 15, 17)),
+                      layer = 0xbe,
+                      invert = false
+                  ),
+                  copy(Box(min={10, 11, 12}, max={13, 15, 17},
+                           invert = true,
+                           layer=0xff),
+                       min=3,
+                       layer = 0xbe,
+                       invert ⊻= true))
+        @test_dsl("copy() box's special properties (max, mode)",
+                  VoxelBox(
+                      BoxModes.corners,
+                      area=Box_minmax(v3f(10, 11, 12), v3f(3, 3, 3)),
+                      layer = 0x0
+                  ),
+                  copy(Box(min={10, 11, 12}, size={13, 15, 17}, layer=0),
+                       max=3,
+                       mode=corners))
+        @test_dsl("copy() box's special properties (center, size)",
+                  VoxelBox(
+                      area=Box_centersize(v3f(-4, -5, -100), v3f(13, 15, 17)),
+                      layer = 0x0
+                  ),
+                  copy(Box(min={10, 11, 12}, max={13, 15, 17}, layer=0),
+                       center={-4, -5, -100},
+                       size={13, 15, 17}))
     end
 
     @testset "Making Voxel Generators with the DSL" begin
