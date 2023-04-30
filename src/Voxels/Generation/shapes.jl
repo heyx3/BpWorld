@@ -126,9 +126,7 @@ Base.@kwdef struct VoxelBox{TMode<:Val} <: AbstractVoxelGenerator
     layer::VoxelElement
     invert::Bool = false
 end
-@inline VoxelBox(layer, area; mode=BoxModes.filled, kw...) = VoxelBox{Val{mode}}(;
-    layer=layer,
-    area=area,
+@inline VoxelBox(mode::E_BoxModes; kw...) = VoxelBox{Val{mode}}(;
     kw...
 )
 
@@ -288,9 +286,10 @@ function dsl_call(::Val{:Box}, args, dsl_state::DslState)::VoxelBox
         end
 
         try
-        return VoxelBox(arg_layer[], arg_bounds,
-                        invert = arg_invert[],
-                        mode = arg_mode[])
+            return VoxelBox(arg_mode[],
+                            layer=arg_layer[],
+                            area=arg_bounds,
+                            invert=arg_invert[])
         catch e
             @error "hi"  exception=(e, catch_backtrace())
             rethrow()
@@ -298,4 +297,4 @@ function dsl_call(::Val{:Box}, args, dsl_state::DslState)::VoxelBox
     end
 end
 #TODO: If copy() is changing the mode, we need to return a different type of box.
-dsl_copy(b::VoxelBox) = typeof(s)(b.area, b.layer, b.invert)
+dsl_copy(b::VoxelBox) = typeof(b)(b.area, b.layer, b.invert)

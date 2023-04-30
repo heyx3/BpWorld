@@ -42,7 +42,7 @@ include("meta.jl")
 
 export AbstractVoxelGenerator, generate!, generate,
            VoxelBinaryField,
-           VoxelBox, VoxelSphere,
+           VoxelBox, VoxelSphere, BoxModes, E_BoxModes,
            VoxelUnion, VoxelDifference, VoxelIntersection,
            DslState, eval_dsl, dsl_expression
 

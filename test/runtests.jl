@@ -7,6 +7,15 @@ using BpWorld
 using BpWorld.Utils, BpWorld.Voxels, BpWorld.Voxels.Generation
 
 
+# Implement equality for voxel generators, for testing purposes.
+function Base.:(==)(a::AbstractVoxelGenerator, b::AbstractVoxelGenerator)::Bool
+    if typeof(a) != typeof(b)
+        return false
+    else
+        return all(getfield(a, f) == getfield(b, f) for f in fieldnames(typeof(a)))
+    end
+end
+
 macro test_dsl(description, expected, expr, exact_match...)
     exact_match = isempty(exact_match) ? true : false
     expr_expr = Expr(:quote, expr)
@@ -72,11 +81,55 @@ end
         @test_dsl("Trivial copy()", 5, copy(5))
         @test_dsl("Trivial copy() 2", Vec(2, 3, 4, 5), copy({ 2, 3, 4, 5 }))
         @test_dsl("Trivial copy() 3", 7, copy(2 + 5))
-        #TODO: More copy() tests
+        @test_dsl("copy() a generator with no changes",
+                  VoxelSphere(center=v3f(2, 3, 4), radius=3, layer=0x7f),
+                  copy(Sphere(center={2, 3, 4},
+                              radius=3,
+                              layer=0x7f)))
+        @test_dsl("copy() a generator with no changes 2",
+                  VoxelBox(BoxModes.filled,
+                           area=Box_minmax(v3f(1, 2, 3), v3f(4, 6, 8)),
+                           layer=0xb0),
+                  copy(Box(layer=0xb0,
+                           min={1, 2, 3},
+                           max={4, 6, 8},
+                           mode=filled)))
+        @test_dsl("copy() a nested generator with no changes",
+                  VoxelUnion([ VoxelBox(BoxModes.filled,
+                                        area=Box_minmax(v3f(1, 2, 3), v3f(4, 6, 8)),
+                                        layer=0xb0),
+                               VoxelSphere(center=v3f(2, 3, 4),
+                                           radius=3,
+                                           layer=0x7f) ]),
+                  copy(Union(
+                      Box(layer=0xb0,
+                          min={1, 2, 3},
+                          max={4, 6, 8},
+                          mode=filled),
+                      Sphere(center={2, 3, 4},
+                             radius=3,
+                             layer=0x7f)
+                  )),
+                  false)
+
+        @test_dsl("copy() with simple changes",
+                  VoxelSphere(center=v3f(5, 3, 1), radius=30, layer=0xab),
+                  copy(Sphere(center={5, 3, 1}, radius=10, layer=0x45),
+                       radius=30,
+                       layer=0xab))
+        @test_dsl("copy() with simple changes 2",
+                  VoxelSphere(center=v3f(5, 3, 1), radius=10, layer=0x45),
+                  copy(Sphere(center={1, 5, 3}, radius=10, layer=0x45),
+                       center={5, 3, 1}))
+        @test_dsl("copy() with relative modifications",
+                  VoxelSphere(center=(v3f(5, 6, 7) / 2), radius=(10-3.5), layer=(0x45 + 0x0a)),
+                  copy(Sphere(center={5, 6, 7}, radius=10, layer=0x45),
+                       center /= 2,
+                       radius -= 3.5,
+                       layer += 0x0a))
     end
 
     @testset "Making Voxel Generators with the DSL" begin
-
         function test_generator(to_do, generator_expr, description...)
             generator = dsl_expression(generator_expr, DslState())
             if generator isa Vector

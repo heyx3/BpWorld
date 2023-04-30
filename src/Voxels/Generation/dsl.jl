@@ -157,10 +157,7 @@ dsl_copy(src, changes::Dict{Any, Pair{Symbol, Any}}, dsl_state) = let dest = Ref
             new_value = if modification == :(=)
                             rhs_value
                         elseif haskey(ASSIGNMENT_INNER_OP, modification)
-                            calculator_func = eval(:( (arg, rhs) ->
-                                $(ASSIGNMENT_INNER_OP[modification])(arg.$prop_name, rhs)
-                            ))
-                            calculator_func(dest, rhs_value)
+                            dynamic_modify(modification, getproperty(dest[], prop_name), rhs_value)
                         else
                             error("Unsupported operator: ", modification)
                         end
@@ -168,7 +165,7 @@ dsl_copy(src, changes::Dict{Any, Pair{Symbol, Any}}, dsl_state) = let dest = Ref
                 setproperty!(dest[], prop_name, new_value)
             else
                 assignment = merge(NamedTuple(), tuple(prop_name => new_value))
-                dest = Setfield.setproperties(dest, assignment)
+                dest[] = Setfield.setproperties(dest[], assignment)
             end
         end
     end
@@ -316,12 +313,16 @@ function dsl_call(::Val{:copy}, args, dsl_state)
     src_value = dsl_context_block(dsl_state, "Source value") do
         dsl_expression(args[1], dsl_state)
     end
-    modifications = Dict{Any, Pair{Symbol, Any}}(map(enumerate(args[2:end])) do i, arg
+    modifications = Dict{Any, Pair{Symbol, Any}}(map(enumerate(args[2:end])) do (i, arg)
         dsl_context_block(dsl_state, "Arg ", i) do
-            if !isa(arg, Expr) || (!Base.isexpr(arg, :(=)) && !in(arg.head, ASSIGNMENT_INNER_OP))
-                error("Expected an assignment expression, like 'x += 5').")
+            # Note that the '=' operator may come in as an Expr named :kw.
+            if !isa(arg, Expr) ||
+               (!Base.isexpr(arg, :(=)) && !Base.isexpr(arg, :kw) && !haskey(ASSIGNMENT_INNER_OP, arg.head))
+            #begin
+                error("Expected an assignment expression, like 'x += 5'). Got \"", arg, "\"")
             end
-            return arg.args[1] => (arg.head => arg.args[2])
+            head = (Base.isexpr(arg, :kw) ? :(=) : arg.head)
+            return arg.args[1] => (head => arg.args[2])
         end
     end)
     return dsl_copy(src_value, modifications, dsl_state)
