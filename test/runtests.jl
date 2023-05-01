@@ -25,11 +25,12 @@ macro test_dsl(description, expected, expr, exact_match...)
         matches = $exact_match ? (actual === $expected) : (actual == $expected)
         if matches
             @test true
-        # Inject the error message into the failed test.
         elseif actual isa Vector
-            @test false == string("Expected ", $expected, ", got \"", actual..., "\". From: ", expr)
+            @error "Expected $($expected), got \"$(actual...)\". From: $expr"
+            @test false
         else
-            @test false == string("Expected ", $expected, ", got ", actual, ". From: ", expr)
+            @error "Expected $($expected), got $actual. From: $expr"
+            @test false
         end
     end
 end
@@ -156,6 +157,38 @@ end
                   copy(Box(min={10, 11, 12}, max={13, 15, 17}, layer=0),
                        center={-4, -5, -100},
                        size={13, 15, 17}))
+
+        @test_dsl("Using a trivial custom function",
+                  40,
+                  begin
+                    @abc() = return 30
+                    return abc() + 10
+                  end)
+        @test_dsl("Using a 3-param custom function, with default 3rd param",
+                  (3+4) * 2.5,
+                  begin
+                    @abc(a, b, c=2.5) = return (a+b)*c
+                    return abc(3, 4)
+                  end)
+        @test_dsl("Using a 3-param custom function, with non-default 3rd param",
+                  (3+4) * 10.34,
+                  begin
+                    @abc(a, b, c=2.5) = return (a+b)*c
+                    return abc(3, 4, 10.34)
+                  end)
+
+        @test_dsl("Using nested functions",
+                  8 * (20 - 13.5),
+                  begin
+                      def = 8
+
+                      @abc() = begin
+                        @def(d) = return 20 - d
+                        return def(13.5)
+                      end
+
+                      return def * abc()
+                  end)
     end
 
     @testset "Making Voxel Generators with the DSL" begin

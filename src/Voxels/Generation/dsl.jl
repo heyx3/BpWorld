@@ -13,6 +13,9 @@ Base.@kwdef mutable struct DslState
     # If an error occurs, the full context is printed.
     # Each element is a tuple that's splatted when printing.
     context::Stack{Tuple} = Stack{Tuple}()
+
+    # An outer scope, if one exists.
+    outer_state::Optional{DslState} = nothing
 end
 
 "Plain scalar data types for the DSL."
@@ -24,6 +27,16 @@ const DslPrimitive = Union{DslScalar, DslVector}
 
 
 ##   Internal helpers   ##
+
+"Iterates the nested `DslState`s, in priority order (innermost to outermost)."
+struct StatesByPriority
+    innermost::DslState
+end
+Base.iterate(s::StatesByPriority) = (s.innermost, s.innermost)
+Base.iterate(::StatesByPriority, prev::DslState) = isnothing(prev.outer_state) ?
+                                                       nothing :
+                                                       (prev.outer_state, prev.outer_state)
+Base.IteratorSize(::Type{StatesByPriority}) = Base.SizeUnknown()
 
 "
 Adds a message to the context stack for the duration of the given function/lambda.
@@ -44,7 +57,7 @@ end
 ##   Top-level function   ##
 
 "
-Converts parsed DSL into the `AbstactVoxelGenerator` it describes.
+Converts parsed DSL into the value it outputs.
 If an error occurred, returns an error message as a `Vector` of objects to print.
 
 Note that simpler values such as numbers or vectors could also technically be returned,
@@ -53,33 +66,43 @@ Note that simpler values such as numbers or vectors could also technically be re
 function eval_dsl(expr, state::DslState = DslState())
     try
         if Base.is_expr(expr, :toplevel) || Base.is_expr(expr, :block)
+            expr = MacroTools.rmlines(MacroTools.flatten(expr))
             return eval_dsl_top_level_sequence(expr.args, state)
         else
             return eval_dsl_top_level_expression(expr, 1, state)
         end
     catch e
+        @error "UH-OH!!" exception=(e, catch_backtrace())
+        println("\n\n\n\n")
+
         # Build the error printout, containing nested context.
         context_msg = Any[ "Error, in the following location:\n" ]
         context_start_idx::Int = length(context_msg) + 1
-        for (shallowness::Int, context_item::Tuple) in enumerate(state.context)
-            # insert!() only takes one element at a time, so we have to insert things in backwards order.
 
-            # Put a line break at the end.
-            insert!(context_msg, context_start_idx, "\n")
+        # insert!() only takes one element at a time, so we have to insert things in backwards order.
+        n_context_items::Int = sum(length(s.context) for s in StatesByPriority(state))
+        shallowness::Int = 1
+        for scope::DslState in reverse(collect(StatesByPriority(state)))
+            for context_item::Tuple in scope.context
+                # Put a line break at the end.
+                insert!(context_msg, context_start_idx, "\n")
 
-            # Put each element of the context into this line.
-            for element_idx in length(context_item):-1:1
-                element = context_item[element_idx]
-                if element isa Exception
-                    element = sprint(io -> showerror(io, element))
+                # Put each element of the context into this line.
+                for element_idx in length(context_item):-1:1
+                    element = context_item[element_idx]
+                    if element isa Exception
+                        element = sprint(io -> showerror(io, element))
+                    end
+                    insert!(context_msg, context_start_idx, element)
                 end
-                insert!(context_msg, context_start_idx, element)
-            end
 
-            # Tab in the line based on its depth.
-            depth::Int = length(state.context) - shallowness + 1
-            for i in 1:depth
-                insert!(context_msg, context_start_idx, "  ")
+                # Tab in the line based on its depth.
+                depth::Int = n_context_items - shallowness + 1
+                for i in 1:depth
+                    insert!(context_msg, context_start_idx, "  ")
+                end
+
+                shallowness += 1
             end
         end
         push!(context_msg, "\n", sprint(showerror, e))
@@ -91,8 +114,7 @@ end
 
 "Returns the output of the given DSL code (as a series of assignment/return expressions)."
 function eval_dsl_top_level_sequence(exprs, state::DslState)
-    important_exprs = filter(e -> !isa(e, LineNumberNode), exprs)
-    for (i, expr) in enumerate(important_exprs)
+    for (i, expr) in enumerate(exprs)
         returned_result = eval_dsl_top_level_expression(expr, i, state)
         if exists(returned_result)
             return returned_result
@@ -110,19 +132,89 @@ function eval_dsl_top_level_expression(expr, idx, state::DslState)::Optional
         return nothing
     else
         return dsl_context_block(state, "Root expression ", idx) do 
-            #TODO: Allow definition of functions, by treating it like a new top-level context/DslState with access to pre-existing variables.
             if Base.is_expr(expr, :(=))
                 (name, value_expr) = expr.args
-                if !isa(name, Symbol)
-                    error("Value is assigned to something other than a name: '", name, "' = ...")
-                else
+                # If the left-hand side is a Symbol, this is a variable assignment.
+                if name isa Symbol
                     state.vars[name] = dsl_expression(value_expr, state)
+                # If the left-hand side is a macro assignment like "@myFunc(a, b) = body",
+                #    then it's defining a function.
+                elseif Base.is_expr(name, :macrocall)
+                    (func_name, _, func_params...) = name.args
+                    func_body = value_expr
+
+                    # Process the function name.
+                    @bpworld_assert((func_name != Symbol()) && (string(func_name)[1] == '@'),
+                                    "Strange format for macro call: '", func_name, "'")
+                    func_name = Symbol(string(func_name)[2:end])
+
+                    # Count the parameters which do/don't have default values.
+                    n_nondefault_params::Optional{Int} = findfirst(!isa(p, Symbol) for p in func_params)
+                    if exists(n_nondefault_params)
+                        n_nondefault_params -= 1
+                    else
+                        n_nondefault_params = length(func_params)
+                    end
+                    if any((p isa Symbol) for p in func_params[n_nondefault_params+1 : end])
+                        error("Can't declare parameters with no default value",
+                                " *after* parameters with a default value")
+                    end
+
+                    # Get the name of each parameter.
+                    func_param_names::Vector{Symbol} = map(enumerate(func_params)) do (param_idx, param)
+                        if param isa Symbol
+                            return param
+                        elseif Base.is_expr(param, :(=))
+                            @bp_check(param.args[1] isa Symbol,
+                                      "Parameter doesn't have a simple name: '", param.args[1], "'")
+                            return param.args[1]
+                        else
+                            error("Unexpected format for parameter ", param_idx,
+                                    " in definition of function: '", param, "'")
+                        end
+                    end
+
+                    # Generate the function.
+                    state.vars[func_name] = func_args -> dsl_context_block(state, "Calling ", func_name) do
+                        # Pre-process the arguments so that each defined parameter has a value.
+                        # Use `nothing` for unset parameters, and `Some{T}` for set ones.
+                        if length(func_args) > length(func_params)
+                            error("Too many arguments! Can't have more than ", length(func_params))
+                        elseif length(func_args) < n_nondefault_params
+                            error("Not all parameters have been given a value (missing at least ",
+                                  n_nondefault_params - length(func_args), ")")
+                        end
+                        n_unset_params::Int = length(func_params) - length(func_args)
+                        func_args = Iterators.flatten((Iterators.map(Some, func_args),
+                                                       Iterators.repeated(nothing, n_unset_params)))
+
+                        # Create an inner scope for this function.
+                        func_dsl_state = DslState(outer_state=state)
+
+                        # Convert each parameter into a local variable for the function invocation.
+                        # These local variables must be declared before the body of the function.
+                        invocation_body = quote $func_body end
+                        for (param_idx, (param_name, arg)) in enumerate(zip(func_param_names, func_args))
+                            dsl_context_block(func_dsl_state, "Arg ", param_idx, " '", param_name, "'") do
+                                insert!(invocation_body.args, param_idx, :(
+                                    $param_name = $(isnothing(arg) ?
+                                                      func_params[param_idx].args[2] :
+                                                      something(arg))
+                                ))
+                            end
+                        end
+
+                        # Pass the function invocation through the DSL evaluator.
+                        return eval_dsl(invocation_body, func_dsl_state)
+                    end
+                else
+                    error("Value is assigned to something other than a name: '", name, "' = ...")
                 end
             elseif Base.is_expr(expr, :return)
                 return dsl_expression(expr.args[1], state)
             else
-                error("Top-level expression must be an assignment ('a = b') or return ('return a'). It was :",
-                      (expr isa Expr) ? expr.head : typeof(expr))
+                error("Top-level expression must be an assignment ('a = b') or return ('return a'). It was ",
+                      (expr isa Expr) ? ":$(expr.head)" : typeof(expr))
             end
             return nothing
         end
@@ -132,14 +224,26 @@ end
 
 ##   Interface   ##
 
-"Given some kind of Julia data or expression, return the expression's value."
+"Given a literal or DSL expression, parse its value."
 dsl_expression(expr, state::DslState) = expr # Assume it's a literal and pass it through
 
 "Given some kind of Julia `Expr`, return the expression's value."
 dsl_julia_expr(v::Val, expr_args, dsl_state) = error("Unexpected expression type: ", val_type(v))
 
 "Given some kind of function or operator call, evaluate and return its value."
-dsl_call(v::Val, args, dsl_state) = error("Unknown function/operator '", val_type(v), "'")
+function dsl_call(v::Val, args, dsl_state)
+    name = val_type(v)
+    if haskey(dsl_state.vars, name)
+        if dsl_state.vars[name] isa Function
+            return dsl_state.vars[name](args)
+        else
+            error("Trying to call '", name,
+                  "' like it's a function, but it's a ", typeof(dsl_state.vars[name]))
+        end
+    else
+        error("Unknown function/operator '", val_type(v), "'")
+    end
+end
 
 "
 Applies the given changes to `src`.
@@ -174,11 +278,12 @@ dsl_julia_expr(::Val{:call}, args::Vector{Any}, state::DslState) = dsl_call(Val(
 
 # Allow the DSL to reference variables by name.
 function dsl_expression(name::Symbol, state::DslState)
-    if haskey(state.vars, name)
-        return state.vars[name]
-    else
-        error("Unknown variable '", name, "'")
+    for scope::DslState in StatesByPriority(state)
+        if haskey(scope.vars, name)
+            return scope.vars[name]
+        end
     end
+    error("Unknown variable '", name, "'")
 end
 
 # Define the 'braces' expression to construct Vec instances.
