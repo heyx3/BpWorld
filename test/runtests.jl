@@ -25,8 +25,8 @@ macro test_dsl(description, expected, expr, exact_match...)
         matches = $exact_match ? (actual === $expected) : (actual == $expected)
         if matches
             @test true
-        elseif actual isa Vector
-            @error "Expected $($expected), got \"$(actual...)\". From: $expr"
+        elseif actual isa DslError
+            @error "Expected $($expected), got \"$(sprint(showerror, actual))\". From: $expr"
             @test false
         else
             @error "Expected $($expected), got $actual. From: $expr"
@@ -157,38 +157,6 @@ end
                   copy(Box(min={10, 11, 12}, max={13, 15, 17}, layer=0),
                        center={-4, -5, -100},
                        size={13, 15, 17}))
-
-        @test_dsl("Using a trivial custom function",
-                  40,
-                  begin
-                    @abc() = return 30
-                    return abc() + 10
-                  end)
-        @test_dsl("Using a 3-param custom function, with default 3rd param",
-                  (3+4) * 2.5,
-                  begin
-                    @abc(a, b, c=2.5) = return (a+b)*c
-                    return abc(3, 4)
-                  end)
-        @test_dsl("Using a 3-param custom function, with non-default 3rd param",
-                  (3+4) * 10.34,
-                  begin
-                    @abc(a, b, c=2.5) = return (a+b)*c
-                    return abc(3, 4, 10.34)
-                  end)
-
-        @test_dsl("Using nested functions",
-                  8 * (20 - 13.5),
-                  begin
-                      def = 8
-
-                      @abc() = begin
-                        @def(d) = return 20 - d
-                        return def(13.5)
-                      end
-
-                      return def * abc()
-                  end)
     end
 
     @testset "Making Voxel Generators with the DSL" begin
@@ -324,6 +292,110 @@ end
             z = (x + y)
             return z ^ y
         end
+
+        @test_dsl("Overwriting variables",
+                  5,
+                  begin
+                      a = 3
+                      a = 4
+                      a = 5
+                      return a
+                  end)
+
+        @test_dsl("Using a trivial custom function",
+                  40,
+                  begin
+                    @abc() = return 30
+                    return abc() + 10
+                  end)
+        @test_dsl("Using a 3-param custom function, with default 3rd param",
+                  (3+4) * 2.5,
+                  begin
+                    @abc(a, b, c=2.5) = return (a+b)*c
+                    return abc(3, 4)
+                  end)
+        @test_dsl("Using a 3-param custom function, with non-default 3rd param",
+                  (3+4) * 10.34,
+                  begin
+                    @abc(a, b, c=2.5) = return (a+b)*c
+                    return abc(3, 4, 10.34)
+                  end)
+
+        @test_dsl("Using nested functions",
+                  8 * (20 - 13.5),
+                  begin
+                      def = 8
+
+                      @abc() = begin
+                        @def(d) = return 20 - d
+                        return def(13.5)
+                      end
+
+                      return def * abc()
+                  end)
+        @test_dsl("Using nested scopes",
+                  8 - 13.5,
+                  begin
+                      def = 8
+
+                      @abc() = begin
+                        @ghi(g) = return def - g
+                        return ghi(13.5)
+                      end
+
+                      return abc()
+                  end)
+
+        @test_dsl("Overwriting variables in different scopes",
+                  4,
+                  begin
+                      a = 4
+                      @b() = begin
+                          a = 5
+                          return a
+                      end
+                      bb = b()
+                      return a
+                  end)
+
+        @test_dsl("Complex scope relationships",
+                  4 + ((6/3.5) * 2),
+                  begin
+                      a = 2
+                      b = 3.5
+                      @cc(i) = return i*a
+                      @dd(i) = return i/b
+                      @ee() = begin
+                          a = 4
+                          i = 200
+                          return a + cc(dd(6))
+                      end
+                      return ee()
+                  end)
+
+        @test_dsl("Trivial repeat() loop",
+                  [1, 2, 3],
+                  repeat(1:3) do i
+                      return i
+                  end,
+                  false)
+        @test_dsl("Repeat() with scope overwriting",
+                  [ (2*2 + 7.5) * 5,
+                    (3*2 + 7.5) * 5,
+                    (4*2 + 7.5) * 5,
+                    (5*2 + 7.5) * 5 ],
+                  begin
+                      d = 5
+                      b = 7.5
+                      @cc(i2) = return i2*d
+                      return repeat(2:5) do i
+                          d = i*2
+                          a = d + b
+                          return cc(a)
+                      end
+                  end,
+                  false)
+        #TODO: Test repeat() with VecI ranges
     end
 
     #TODO: Test that voxels are generated correctly.

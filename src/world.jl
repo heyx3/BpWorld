@@ -308,8 +308,8 @@ function start_new_scene(world::World, new_contents::AbstractString)::Optional{A
         return "Invalid Julia syntax: $(sprint(showerror, e))"
     end
     scene_generator = Voxels.Generation.eval_dsl(scene_expr)
-    if scene_generator isa Vector
-        return string(scene_generator...)
+    if scene_generator isa DslError
+        return string(scene_generator.msg_data...)
     end
 
     # The scene parsed correctly, so kick off its generation.

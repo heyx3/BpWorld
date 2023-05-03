@@ -56,12 +56,14 @@ end
 
 ##   Top-level function   ##
 
-"
-Converts parsed DSL into the value it outputs.
-If an error occurred, returns an error message as a `Vector` of objects to print.
+struct DslError <: Exception
+    msg_data::Vector
+end
+Base.showerror(io::IO, e::DslError) = print(io, e.msg_data...)
 
-Note that simpler values such as numbers or vectors could also technically be returned,
-    if that's what your DSL describes.
+"
+Evaluates a DSL block or expression, returning the described object.
+If an error occurred, throws a `DslError`.
 "
 function eval_dsl(expr, state::DslState = DslState())
     try
@@ -72,8 +74,17 @@ function eval_dsl(expr, state::DslState = DslState())
             return eval_dsl_top_level_expression(expr, 1, state)
         end
     catch e
-        @error "UH-OH!!" exception=(e, catch_backtrace())
-        println("\n\n\n\n")
+        # If this DSL state is not the outermost one,
+        #    move its context into the parent state and rethrow.
+        if exists(state.outer_state)
+            for c in reverse(collect(state.context))
+                push!(state.outer_state.context, c)
+            end
+            rethrow()
+        end
+
+        @error "DSL error!" exception=(e, catch_backtrace())
+        println("\n\n")
 
         # Build the error printout, containing nested context.
         context_msg = Any[ "Error, in the following location:\n" ]
@@ -105,8 +116,11 @@ function eval_dsl(expr, state::DslState = DslState())
                 shallowness += 1
             end
         end
+
+        # Put the error message at the end, fully tabbed-out.
         push!(context_msg, "\n", sprint(showerror, e))
-        return context_msg
+
+        return DslError(context_msg)
     end
 end
 
@@ -175,7 +189,8 @@ function eval_dsl_top_level_expression(expr, idx, state::DslState)::Optional
                     end
 
                     # Generate the function.
-                    state.vars[func_name] = func_args -> dsl_context_block(state, "Calling ", func_name) do
+                    state.vars[func_name] = (caller_dsl_state, func_args) ->
+                      dsl_context_block(caller_dsl_state, "Calling ", func_name) do
                         # Pre-process the arguments so that each defined parameter has a value.
                         # Use `nothing` for unset parameters, and `Some{T}` for set ones.
                         if length(func_args) > length(func_params)
@@ -195,7 +210,7 @@ function eval_dsl_top_level_expression(expr, idx, state::DslState)::Optional
                         # These local variables must be declared before the body of the function.
                         invocation_body = quote $func_body end
                         for (param_idx, (param_name, arg)) in enumerate(zip(func_param_names, func_args))
-                            dsl_context_block(func_dsl_state, "Arg ", param_idx, " '", param_name, "'") do
+                            dsl_context_block(caller_dsl_state, "Arg ", param_idx, " '", param_name, "'") do
                                 insert!(invocation_body.args, param_idx, :(
                                     $param_name = $(isnothing(arg) ?
                                                       func_params[param_idx].args[2] :
@@ -233,17 +248,22 @@ dsl_julia_expr(v::Val, expr_args, dsl_state) = error("Unexpected expression type
 "Given some kind of function or operator call, evaluate and return its value."
 function dsl_call(v::Val, args, dsl_state)
     name = val_type(v)
-    if haskey(dsl_state.vars, name)
-        if dsl_state.vars[name] isa Function
-            return dsl_state.vars[name](args)
-        else
-            error("Trying to call '", name,
-                  "' like it's a function, but it's a ", typeof(dsl_state.vars[name]))
+    for scope::DslState in StatesByPriority(dsl_state)
+        if haskey(scope.vars, name)
+            if scope.vars[name] isa Function
+                args = map(a -> dsl_expression(a, dsl_state), args)
+                return scope.vars[name](dsl_state, args)
+            else
+                error("Trying to call '", name, "' like it's a function, but it's a ",
+                    typeof(scope.vars[name]))
+            end
         end
-    else
-        error("Unknown function/operator '", val_type(v), "'")
     end
+    error("Unknown function/operator '", val_type(v), "'")
 end
+
+"Given a `do` block in the form `someFunc(args) do ... end`, evaluate and return its value."
+dsl_block(name::Val, expr_args, expr_body, dsl_state) = error("Unexpected 'do' block: ", name, "()")
 
 "
 Applies the given changes to `src`.
@@ -275,6 +295,17 @@ dsl_expression(expr::Expr, state::DslState) = dsl_julia_expr(Val(expr.head), exp
 
 # Provide the hook for 'dsl_call()'.
 dsl_julia_expr(::Val{:call}, args::Vector{Any}, state::DslState) = dsl_call(Val(args[1]), args[2:end], state)
+
+# Provide the hook for 'dsl_block()'.
+function dsl_julia_expr(::Val{:do}, args::Vector{Any}, state::DslState)
+    (call, body) = args
+    if !Base.is_expr(call, :call)
+        error("Expected a function-call syntax at the front of the `do` block,",
+              " such as `repeat(1:10) do ... end`. Got: ", call)
+    end
+    (call_name, call_args...) = call.args
+    return dsl_block(Val(call_name), call_args, body, state)
+end
 
 # Allow the DSL to reference variables by name.
 function dsl_expression(name::Symbol, state::DslState)
@@ -445,8 +476,49 @@ function dsl_call(::Val{:copy}, args, dsl_state)
     return dsl_copy(src_value, modifications, dsl_state)
 end
 
+# A 'Repeat' block acts like a simple 'for' loop.
+# The only argument is a range of values, e.x. `1:10`.
+# The output is an array of the returned values; iterations that return `nothing` are dropped.
+#TODO: Double-check that VecI ranges work as expected.
+function dsl_block(::Val{:repeat}, args, body, dsl_state::DslState)
+    return dsl_context_block(dsl_state, "repeat(", intersperse(args, ", ")..., ")") do
+        # Get the single argument representing the range.
+        # The argument must be a colon operator (like `1:10`).
+        if length(args) != 1 || !Base.is_expr(args[1], :call) || args[1].args[1] != :(:)
+            error("repeat() should have exactly one argument, the iteration range (for example, `1:10`)")
+        end
+        range_values = args[1].args[2:end]
+        range = Base.:(:)((dsl_expression(v, dsl_state) for v in range_values)...)
+
+        # Check that the body of the loop is well-formed.
+        if !Base.is_expr(body, :->) || !Base.is_expr(body.args[1], :tuple) ||
+            (length(body.args[1].args) != 1) || !isa(body.args[1].args[1], Symbol)
+        #begin
+            error("The loop variable for the block is malformed. It should be a single token, like `idx`.")
+        end
+        if !Base.is_expr(body.args[2], :block)
+            error("The body of the block is malformed: ", body.args[2])
+        end
+        loop_var_name::Symbol = body.args[1].args[1]
+        loop_statements = body.args[2].args
+
+        # Execute the loop.
+        return filter(exists, map(range) do i
+            # Enter a smaller scope.
+            inner_state = DslState(outer_state=dsl_state)
+            # Inject the loop variable as a normal variable.
+            iteration_body = quote
+                $loop_var_name = $i
+            end
+            append!(iteration_body.args, loop_statements)
+            # Hand this body of code to the DSL parser.
+            return eval_dsl(iteration_body, inner_state)
+        end)
+    end
+end
+
 
 #TODO: DslState holds a PRNG, and "rand([min][, max])" function is implemented using it
-#TODO: Add noise (e.x. perlin) after the above TODO is done
-#TODO: Simple loop (e.x. "repeat(1:10) do i ... end")
-#TODO: Special mutations of existing variables (e.x. "push!(my_arr, 5 + 8)")
+#TODO: Add noise (e.x. perlin) after the above TODO is done?
+#TODO: Conditionals
+#TODO: Special mutations of existing variables (e.x. array/Union/Intersection mutations like "push!(my_union, my_voxel_box)")
