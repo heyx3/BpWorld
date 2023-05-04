@@ -73,12 +73,16 @@ end
 
 mutable struct World
     voxels::Voxels.Scene
+    next_voxels::Optional{Voxels.Scene} # New scene that's currently being generated in the background.
 
     sun::SunData
     sun_gui::SunDataGui
 
     fog::FogData
     fog_gui::FogDataGui
+
+    scene::SceneData
+    scene_gui::SceneDataGui
 
     sun_viewproj::fmat4 # Updated every frame
     target_shadowmap::Target
@@ -103,7 +107,7 @@ function Base.close(s::World)
     # This is the safest option to avoid leaks.
     blacklist = tuple(:total_seconds,
                       :sun_viewproj,
-                      :sun, :sun_gui, :fog, :fog_gui,
+                      :sun, :sun_gui, :fog, :fog_gui, :scene, :scene_gui,
                       :cam, :cam_settings, :is_mouse_captured, :inputs,
                       :buffers)
     whitelist = setdiff(fieldnames(typeof(s)), blacklist)
@@ -114,7 +118,7 @@ function Base.close(s::World)
                 close(el)
             end
             empty!(v)
-        else
+        elseif exists(v) # Some fields are Optional
             close(v)
         end
     end
@@ -184,50 +188,13 @@ function World(window::GLFW.Window, assets::Assets)
                              assets.prog_voxels_depth_only)
     ]
 
+    gui_sun = SunData()
+    gui_fog = FogData()
+    gui_scene = SceneData()
+
     # Generate some voxel data.
-    voxel_terrain = Voxels.Generation.VoxelField(
-        layer = 0x1,
-        threshold = @f32(0.3),
-        pos_scale = v3f(2, 2, 1),
-        field = Voxels.Generation.MathField(*,
-            Voxels.Generation.ConstField(0.5),
-            Voxels.Generation.MathField(+,
-                Voxels.Generation.OctaveNoise(
-                    Voxels.Generation.RidgedPerlin(),
-                    3
-                ),
-                Voxels.Generation.BillowedPerlin(5*one(v3f))
-            )
-        )
-    )
-    voxel_shape1 = Voxels.Generation.VoxelBox(
-        0x2,
-        Box_minmax(v3f(Val(0.065)),
-                   v3f(Val(0.435))),
-        mode = Voxels.Generation.BoxModes.edges
-    )
-    voxel_shape2 = Voxels.Generation.VoxelSphere(
-        center = v3f(0.25, 0.25, 0.75),
-        radius = 0.3,
-        layer = 0x3
-    )
-    voxel_final = Voxels.Generation.VoxelUnion(
-        Float32.([ 1.0, 2.0, 3.0 ]),
-        Voxels.Generation.VoxelDifference(
-            voxel_terrain,
-            Voxels.Generation.VoxelBox(
-                voxel_shape1.layer,
-                Box_minmax(
-                    voxel_shape1.area.min / @f32(1.3),
-                    max_inclusive(voxel_shape1.area) * @f32(1.3)
-                )
-            ),
-            @set(voxel_shape2.radius *= 1.3)
-        ),
-        voxel_shape1,
-        voxel_shape2
-    )
-    voxel_scene = Voxels.Scene(v3i(64, 64, 64), voxel_final,
+    voxels = Voxels.Generation.eval_dsl(Meta.parseall(gui_scene.contents))
+    voxel_scene = Voxels.Scene(v3i(64, 64, 64), voxels,
                                v3f(10, 10, 10), voxel_assets)
 
     g_buffer_data = set_up_g_buffer(window_size)
@@ -236,12 +203,12 @@ function World(window::GLFW.Window, assets::Assets)
     check_gl_logs("After world initialization")
     return World(
         voxel_scene,
+        nothing,
 
-        SunData(),
-        SunDataGui(),
-
-        FogData(),
-        FogDataGui(),
+        #TODO: Save GUI data on close, load it again on start
+        gui_sun, init_gui_state(gui_sun),
+        gui_fog, init_gui_state(gui_fog),
+        gui_scene, init_gui_state(gui_scene),
 
         m_identityf(4, 4),
         sun_shadowmap_data...,
@@ -278,22 +245,26 @@ function update(world::World, delta_seconds::Float32, window::GLFW.Window)
     world.total_seconds += delta_seconds
 
     # Update inputs.
-    for input_names in fieldnames(typeof(world.inputs))
-        field_val = getfield(world.inputs, input_names)
-        if field_val isa AbstractButton
-            Bplus.Input.button_update(field_val, window)
-        elseif field_val isa AbstractAxis
-            Bplus.Input.axis_update(field_val, window)
-        else
-            error("Unhandled case: ", typeof(field_val))
+    if !CImGui.Get_WantCaptureKeyboard(CImGui.GetIO()) &&
+       (!world.is_mouse_captured || !CImGui.Get_WantCaptureMouse(CImGui.GetIO()))
+    #begin
+        for input_names in fieldnames(typeof(world.inputs))
+            field_val = getfield(world.inputs, input_names)
+            if field_val isa AbstractButton
+                Bplus.Input.button_update(field_val, window)
+            elseif field_val isa AbstractAxis
+                Bplus.Input.axis_update(field_val, window)
+            else
+                error("Unhandled case: ", typeof(field_val))
+            end
         end
-    end
-    if button_value(world.inputs.capture_mouse)
-        world.is_mouse_captured = !world.is_mouse_captured
-        GLFW.SetInputMode(
-            window, GLFW.CURSOR,
-            world.is_mouse_captured ? GLFW.CURSOR_DISABLED : GLFW.CURSOR_NORMAL
-        )
+        if button_value(world.inputs.capture_mouse)
+            world.is_mouse_captured = !world.is_mouse_captured
+            GLFW.SetInputMode(
+                window, GLFW.CURSOR,
+                world.is_mouse_captured ? GLFW.CURSOR_DISABLED : GLFW.CURSOR_NORMAL
+            )
+        end
     end
 
     # Update the camera.
@@ -309,7 +280,45 @@ function update(world::World, delta_seconds::Float32, window::GLFW.Window)
     )
     (world.cam, world.cam_settings) = cam_update(world.cam, world.cam_settings, cam_input, delta_seconds)
 
+    # Update the scene.
     Voxels.update(world.voxels, delta_seconds)
+    # See if the next scene is finished loading, and if so, replace the current scene.
+    if exists(world.next_voxels)
+        Voxels.update(world.next_voxels, delta_seconds)
+        if world.next_voxels.is_finished_setting_up
+            close(world.voxels)
+            world.voxels = world.next_voxels
+            world.next_voxels = nothing
+        end
+    end
+end
+
+"
+Processes a new scene file in the background, eventually replacing the current scene with it.
+If the scene file is invalid, returns an error message.
+Otherwise, returns `nothing` to indicate that it was accepted.
+"
+function start_new_scene(world::World, new_contents::AbstractString)::Optional{AbstractString}
+    # First try parsing the scene.
+    # If that fails, don't change the world at all.
+    local scene_expr
+    try
+        scene_expr = Meta.parseall(new_contents)
+    catch e
+        return "Invalid Julia syntax: $(sprint(showerror, e))"
+    end
+    scene_generator = Voxels.Generation.eval_dsl(scene_expr)
+    if scene_generator isa Voxels.Generation.DslError
+        return string(scene_generator.msg_data...)
+    end
+
+    # The scene parsed correctly, so kick off its generation.
+    if exists(world.next_voxels)
+        close(world.next_voxels)
+    end
+    world.next_voxels = Voxels.Scene(v3i(64, 64, 64), scene_generator,
+                                     v3f(10, 10, 10), world.voxels.layers)
+    return nothing
 end
 
 

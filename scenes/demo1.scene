@@ -1,0 +1,30 @@
+box = Box(
+    layer = 0x2,
+    min = { 0.065, 0.065, 0.065 },
+    max = { 0.435 }.xxx,
+    mode = edges
+)
+sphere = Sphere(
+    layer = 0x3,
+    center = { {0.25}.xx, 0.75 },
+    radius = 0.3
+)
+terrain = BinaryField(
+    layer = 0x1,
+    field = 0.2 + (0.5 * perlin(pos * 5.0))
+)
+
+# Remove any terrain near the box or sphere.
+box_inflated = copy(box,
+    size *= 1.3,
+	mode = filled
+)
+sphere_inflated = copy(sphere,
+    radius *= 1.3
+)
+terrain = Difference(
+    terrain,
+    [ box_inflated, sphere_inflated ]
+)
+
+return Union(box, sphere, terrain)

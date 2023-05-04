@@ -12,23 +12,30 @@ using Bplus,
 
 "The path where all assets should be placed"
 const ASSETS_PATH = joinpath(@__DIR__, "..", "..", "assets")
+"The path where all scene files should be placed"
+const SCENES_PATH = joinpath(@__DIR__, "..", "..", "scenes")
+
+"The extension (no period) for scene files"
+const SCENES_EXTENSION = "scene"
 
 
 "Asserts for this specific project: `@bpworld_assert`, `@bpworld_debug`."
 @make_toggleable_asserts bpworld_
 @assert bpworld_asserts_enabled() == false
 
-
 "
-Removes the type declaration.
+Removes a type declaration.
 This allows you to make a 'default' implementation that explicitly lists types,
-    but still doesn't risk ambiguity with more specific overloads.
+    but doesn't risk ambiguity with more specific overloads.
 "
 macro omit_type(var_decl)
     @assert(Meta.isexpr(var_decl, :(::)) && isa(var_decl.args[1], Symbol),
             "Expected a typed variable declaration, got: $var_decl")
     return esc(var_decl.args[1])
 end
+
+"A generator that injects a value in between each element of another iterator"
+@inline intersperse(iter, separator) = Iterators.flatten(Iterators.zip(iter, Iterators.repeated(separator)))
 
 
 "Checks and prints any messages/errors from OpenGL. Does nothing in release mode."
@@ -49,18 +56,13 @@ end
 
 include("shaders.jl")
 include("textures.jl")
-include("gui_integration.jl")
 
 
 export @bpworld_assert, @bpworld_debug,
        @omit_type,
+       intersperse,
        check_gl_logs,
-       ASSETS_PATH, process_shader_contents,
-       pixel_converter, load_tex,
-       service_gui_init, service_gui_get,
-          service_gui_start_frame, service_gui_end_frame,
-          gui_tex,
-       gui_window, gui_with_item_width, gui_with_unescaped_tabbing, gui_within_tree_node,
-          gui_spherical_vector
+       ASSETS_PATH, SCENES_PATH,
+       process_shader_contents, pixel_converter, load_tex
 
-end
+end # module

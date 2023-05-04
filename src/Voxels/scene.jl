@@ -12,6 +12,7 @@ mutable struct Scene
                                              Union{GL.Mesh, Tuple{GL.Texture, Int}}}}
 
     # There is an ongoing Task to compute the voxels, and then each layer's mesh.
+    is_finished_setting_up::Bool
     layer_meshes::Vector{Optional{Tuple{GL.Buffer, GL.Buffer, GL.Mesh}}}
     mesher::VoxelMesher
     voxel_task::Task
@@ -28,7 +29,7 @@ function Scene(grid_size::v3i, grid_generator::Generation.AbstractVoxelGenerator
                world_scale::v3f,
                assets::Vector{LayerRenderer}
               )::Scene
-    grid::VoxelGrid = fill(zero(eltype(VoxelGrid)),
+    grid::VoxelGrid = fill(zero(VoxelElement),
                            grid_size...)
 
     #TODO: Check the range of voxel outputs of the generator; make sure they don't exceed the number of assets
@@ -38,7 +39,7 @@ function Scene(grid_size::v3i, grid_generator::Generation.AbstractVoxelGenerator
     meshing_channel_to_main = Channel{Int}(2)
     meshing_channel_to_worker = Channel{Bool}(2)
     voxel_task = @async begin
-        Generation.generate!(grid, grid_generator)
+        Generation.generate!(grid, grid_generator, true)
         put!(meshing_channel_to_main, 0)
 
         #TODO: Use one big buffer for the voxel data, signal back to the main thread after every slice
@@ -77,6 +78,7 @@ function Scene(grid_size::v3i, grid_generator::Generation.AbstractVoxelGenerator
         assets,
         Vector{Tuple{LayerRenderer, GL.Program, Union{GL.Mesh, Tuple{GL.Texture, Int}}}}(),
 
+        false,
         fill(nothing, length(assets)),
         mesher,
         voxel_task,
@@ -115,6 +117,7 @@ function update(scene::Scene, delta_seconds::Float32)
             @time set_tex_color(scene.grid_tex3d, scene.grid)
         # Otherwise, it finished meshing a voxel layer.
         else
+            @bpworld_assert(!scene.is_finished_setting_up)
             @bpworld_assert(finished_idx <= length(scene.layers))
             println("Layer ", finished_idx, " is done meshing")
 
@@ -127,13 +130,18 @@ function update(scene::Scene, delta_seconds::Float32)
                         PrimitiveTypes.triangle,
                         [ VertexDataSource(verts, sizeof(VoxelVertex)) ],
                         voxel_vertex_layout(1),
-                        (inds, eltype(scene.mesher.index_buffer))
+                        MeshIndexData(inds, eltype(scene.mesher.index_buffer))
                     )
                     scene.layer_meshes[finished_idx] = (verts, inds, mesh)
                 end
             end
 
             put!(scene.meshing_channel_to_worker, true)
+
+            # If this was the last layer, we're finished.
+            if finished_idx == length(scene.layers)
+                scene.is_finished_setting_up = true
+            end
         end
     # If the task is still running and Julia only has one thread,
     #    we need to manually yield our time to give the task a chance.

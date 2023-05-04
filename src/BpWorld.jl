@@ -7,7 +7,7 @@ using GLFW, ModernGL, CImGui,
 
 using Bplus,
       Bplus.Utilities, Bplus.Math, Bplus.GL,
-      Bplus.Helpers, Bplus.SceneTree, Bplus.Input
+      Bplus.Helpers, Bplus.SceneTree, Bplus.Input, Bplus.GUI
 
 include("Utils/Utils.jl")
 using .Utils
@@ -15,7 +15,7 @@ using .Utils
 include("Voxels/Voxels.jl")
 using .Voxels
 
-include("data.jl")
+include("gui_data.jl")
 include("assets.jl")
 include("world.jl")
 include("post_process.jl")
@@ -69,8 +69,8 @@ function main()
                 reload_shaders(world, assets)
             end
             if is_quit_confirming
-                draw_scale = v3f(assets.tex_quit_confirmation.size.xy / get_window_size(),
-                                 1.0)
+                draw_scale = v3f((assets.tex_quit_confirmation.size.xy / get_window_size())...,
+                                 1)
                 resource_blit(bp_resources, assets.tex_quit_confirmation,
                               quad_transform=m_scale(draw_scale))
                 if button_value(world.inputs.quit_confirm)

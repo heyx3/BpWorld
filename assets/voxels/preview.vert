@@ -1,10 +1,10 @@
-//Tell the linter about stuff that the julia program normally injects.
+//Tell the linter about stuff that the program normally injects.
 #version 460
 #extension GL_GOOGLE_include_directive: require
 #extension GL_ARB_bindless_texture : require
 #extension GL_ARB_gpu_shader_int64 : require
 // #J#J#
-//  ^^ Tells the Julia project to cut off everything before it
+//  ^^ Tells the Julia program to cut off everything before it
 
 //This program is for a voxel layer that hasn't been meshed yet.
 //It dynamically decides in the geometry shader whether each face of each voxel should be rendered,
