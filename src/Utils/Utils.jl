@@ -62,7 +62,7 @@ export @bpworld_assert, @bpworld_debug,
        @omit_type,
        intersperse,
        check_gl_logs,
-       ASSETS_PATH, SCENES_PATH,
+       ASSETS_PATH, SCENES_PATH, SCENES_EXTENSION,
        process_shader_contents, pixel_converter, load_tex
 
 end # module

@@ -104,52 +104,53 @@ function gui_fog(fog::FogData, state::FogDataGui, id = nothing)
     end
 end
 
-"All information needed to drive the scene editor gui"
+"All information needed to describe the loaded scene file"
 Base.@kwdef mutable struct SceneData <:GuiData
+    new_file_name::String = "my_new_scene"
     current_file_path::Optional{Vector{String}} = nothing
 
-    contents::String = """
-# Add a box. Later we will use the inflated box to mask out some terrain.
-box_min = { 0.065 }.xxx
-box_max = { 0.435 }.xxx
-box = Box(
-    layer = 0x2,
-    min = box_min,
-    max = box_max
-)
-box_inflated = Box(
-    layer = 0x2,
-    min = box_min / 1.3,
-    max = box_max * 1.3
-)
+    contents::String = replace("""
+        # Add a box. Later we will use the inflated box to mask out some terrain.
+        box_min = { 0.065 }.xxx
+        box_max = { 0.435 }.xxx
+        box = Box(
+            layer = 0x2,
+            min = box_min,
+            max = box_max
+        )
+        box_inflated = Box(
+            layer = 0x2,
+            min = box_min / 1.3,
+            max = box_max * 1.3
+        )
 
-# Add a sphere. Later we will use the inflated sphere to mask out some terrain.
-sphere_radius = 0.3
-sphere_center = { { 0.25 }.xx, 0.75 }
-sphere = Sphere(
-    layer = 0x3,
-    center = sphere_center,
-    radius = sphere_radius
-)
-sphere_inflated = Sphere(
-    layer = 0x3,
-    center = sphere_center,
-    radius = sphere_radius * 1.3
-)
+        # Add a sphere. Later we will use the inflated sphere to mask out some terrain.
+        sphere_radius = 0.3
+        sphere_center = { { 0.25 }.xx, 0.75 }
+        sphere = Sphere(
+            layer = 0x3,
+            center = sphere_center,
+            radius = sphere_radius
+        )
+        sphere_inflated = Sphere(
+            layer = 0x3,
+            center = sphere_center,
+            radius = sphere_radius * 1.3
+        )
 
-# Generate some Perlin noise "terrain".
-terrain = BinaryField(
-    layer = 0x1,
-    field = 0.2 + (0.5 * perlin(pos * 5.0))
-)
-# Remove any terrain near the box or sphere.
-terrain = Difference(
-    terrain,
-    [ box_inflated, sphere_inflated ]
-)
+        # Generate some Perlin noise "terrain".
+        terrain = BinaryField(
+            layer = 0x1,
+            field = 0.2 + (0.5 * perlin(pos * 5.0))
+        )
+        # Remove any terrain near the box or sphere.
+        terrain = Difference(
+            terrain,
+            [ box_inflated, sphere_inflated ]
+        )
 
-# Combine the terrain with the box and sphere.
-return Union(box, sphere, terrain)"""
+        # Combine the terrain with the box and sphere.
+        return Union(box, sphere, terrain)""", "        "=>"")
 
     refresh_wait_interval_seconds::Float64 = 3.0
 end
@@ -176,6 +177,7 @@ end
 @bp_enum SceneState ready compiling error
 Base.@kwdef mutable struct SceneDataGui <: GuiState
     scene_buffer::Vector{UInt8}
+    new_name_buffer::Vector{UInt8}
 
     scene_changed::Bool = true
     last_update_time::UInt64 = 0
@@ -185,16 +187,22 @@ Base.@kwdef mutable struct SceneDataGui <: GuiState
     scene_folder_tree::SceneFolder = SceneFolder(SCENES_PATH)
 end
 function init_gui_state(data::SceneData)
-    buffer = Vector{UInt8}(data.contents)
+    scene_buffer = Vector{UInt8}(data.contents)
+    new_name_buffer = Vector{UInt8}(data.new_file_name)
 
-    # Make the buffer at least 4096 bytes, and leave room for a null terminator at the end.
-    first_unused_buffer_idx = (length(data.contents) + 1) * sizeof(Char)
-    resize!(buffer, max(first_unused_buffer_idx + sizeof(Char) - 1, 4096))
+    # Copy the initial string data into their buffers,
+    #    give the buffers a minimum size,
+    #    and fill the extra space with null terminators (ensuring at least one exists).
+    # Give the buffers a minimum size, and fill with null terminators at the end.
+    for (buff, min_size) in [ (scene_buffer, 4096),
+                              (new_name_buffer, 256) ]
+        first_nullterm_idx = length(buff) + 1
+        resize!(buff, max(first_nullterm_idx, min_size))
+        buff[first_nullterm_idx:end] .= zero(UInt8)
+    end
 
-    # Fill the unused bytes with null terminators.
-    buffer[first_unused_buffer_idx:end] .= zero(UInt8)
-
-    return SceneDataGui(scene_buffer = buffer)
+    return SceneDataGui(scene_buffer = scene_buffer,
+                        new_name_buffer = new_name_buffer)
 end
 
 function gui_scene(func_try_compile_scene, # (String) -> Optional{String} : returns the error message if it failed
@@ -203,8 +211,34 @@ function gui_scene(func_try_compile_scene, # (String) -> Optional{String} : retu
         CImGui.PushID(id)
     end
 
-    # Provide a GUI for picking the scene file.
-    if CImGui.Button("Refresh Scene Files")
+    # Provide a GUI for picking/creating a scene file.
+    if CImGui.Button("Save new file")
+        relative_path = "$(scene.new_file_name).$SCENES_EXTENSION"
+        full_path = joinpath(SCENES_PATH, relative_path)
+        if !isfile(full_path)
+            mkpath(dirname(full_path))
+            open(full_path, "w") do file
+                println(file, scene.contents)
+            end
+
+            # Select the file, and refresh the scene folder tree.
+            scene.current_file_path = split(relative_path, [ '/', '\\' ])
+            state.scene_folder_tree = SceneFolder(SCENES_PATH)
+        else
+            #TODO: Display the error to the user somehow
+        end
+    end
+    CImGui.SameLine()
+    just_changed_new_file_name::Bool = @c CImGui.InputText(
+        "",
+        &state.new_name_buffer[0], length(state.new_name_buffer),
+        0
+    )
+    if just_changed_new_file_name
+        null_idx = findfirst('\0', state.new_name_buffer)
+        scene.new_file_name = String(@view state.new_name_buffer[1:(null_idx-1)])
+    end
+    if CImGui.Button("Refresh Scene Files") #TODO: Just refresh every second or so instead
         state.scene_folder_tree = SceneFolder(SCENES_PATH)
     end
     # Use recursion to display the file hierarchy under the root scene folder.
@@ -283,21 +317,19 @@ function gui_scene(func_try_compile_scene, # (String) -> Optional{String} : retu
                      scene.current_file_path,
                      AbstractString[ ])
 
-    #TODO: Figure out how to use the "resize" callback
-    #TODO: Auto-detect file updates and load them in, so users can use VScode or other nice editors
-    just_changed::Bool = @c CImGui.InputTextMultiline(
+    just_changed_scene_contents::Bool = @c CImGui.InputTextMultiline(
         "Code",
         &state.scene_buffer[0], length(state.scene_buffer),
         (0, 650),
         CImGui.ImGuiInputTextFlags_AllowTabInput
     )
-    state.scene_changed |= just_changed
+    state.scene_changed |= just_changed_scene_contents
     if (state.parse_state == SceneState.ready) && state.scene_changed
         state.parse_state = SceneState.compiling
     end
 
     # After enough time, tell the world to try rendering this new scene.
-    if just_changed
+    if just_changed_scene_contents
         state.last_update_time = time_ns()
     elseif state.scene_changed &&
            ((time_ns() - state.last_update_time) / 1e9) > scene.refresh_wait_interval_seconds
