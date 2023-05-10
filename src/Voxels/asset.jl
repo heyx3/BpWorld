@@ -2,6 +2,42 @@
 ##   Layer data definition   ##
 ###############################
 
+struct LayerTexture
+    # This texture's name in the shader.
+    # E.x. if you use "tex_albedo", then the shader
+    #    will automatically define "uniform sampler2D tex_albedo;".
+    code_name::String
+
+    # The default sampler is good for typical 3D meshes:
+    #    repeat, linear filtering, mipmaps, and anisotropy based on graphics settings.
+    sampler::Optional{Sampler{2}}
+
+    channels::E_SimpleFormatComponents
+    use_mips::Bool
+
+    LayerTexture(code_name::String
+                 ;
+                 sampler::Optional{Sampler{2}} = nothing,
+                 channels::E_SimpleFormatComponents = SimpleFormatComponents.RGBA,
+                 use_mips::Bool = true
+                ) = new(code_name, sampler, channels, use_mips)
+    # This constructor handles 'nothing' values for each field, for StructTypes deserialization.
+    LayerTexture(code_name, sampler, channels, use_mips) = new(
+        isnothing(code_name) ?
+            error("Field 'code_name' must be provided for a texture") :
+            code_name,
+        sampler,
+        isnothing(channels) ?
+            SimpleFormatComponents.RGBA :
+            channels,
+        isnothing(use_mips) ?
+            true :
+            use_mips
+    )
+end
+StructTypes.StructType(::Type{LayerTexture}) = StructTypes.UnorderedStruct()
+
+
 "The data definition for a specific voxel material."
 struct LayerData
     # The fragment shader file.
@@ -9,16 +45,9 @@ struct LayerData
     frag_shader_path::AbstractString
 
     # The textures used by this voxel asset.
-    # Each file name is mapped to a sampler2D uniform in the fragment shader.
-    # This uniform is automatically generated, for your convenience.
-    textures::Dict{AbstractString, AbstractString}
-
-    # The default sampler is for usual 3D surfaces:
-    #    repeat, linear filtering, mipmaps, anisotropy based on graphics settings.
-    # You can change the sampler to use here.
-    # The textures are indexed by their uniform name here, not their file-name.
-    samplers::Dict{AbstractString, Sampler{2}}
-    #TODO: Replace 'samplers' with a larger set of settings, like "include mips?"
+    # The keys are the file names, relative to the root folder for all voxel layers.
+    #TODO: relative to the root folder if it starts with a slash, relative to the layer JSON file otherwise
+    textures::Dict{AbstractString, LayerTexture}
 
     # The fragment shader to use for a depth-only pass.
     # This shader file should be in a specific "assets" sub-folder.
@@ -29,19 +58,17 @@ struct LayerData
     # Any #defines you want to add in the fragment shader.
     # The keys are the token names, and the values are the token values.
     # E.x. the value "ABC" => "1" translates into "#define ABC 1".
+    #TODO: If given an array of strings, turn them into multiple lines connected by backslash
     preprocessor_defines::Dict{AbstractString, AbstractString}
 
     # This constructor handles 'nothing' values for each field, for StructTypes deserialization.
-    LayerData(frag_shader_path, textures, samplers, depth_pass, preprocessor_defines) = new(
+    LayerData(frag_shader_path, textures, depth_pass, preprocessor_defines) = new(
         isnothing(frag_shader_path) ?
-            error("Field 'frag_shader_path' must be set for a voxel asset!") : #TODO: Default to an 'error' shader.
+            error("Field 'frag_shader_path' must be set for a voxel asset!") :
             frag_shader_path,
         isnothing(textures) ?
-            Dict{AbstractString, AbstractString}() :
+            Dict{AbstractString, LayerTexture}() :
             textures,
-        isnothing(samplers) ?
-            Dict{AbstractString, Sampler{2}}() :
-            samplers,
         isnothing(depth_pass) ?
             "basic.frag" :
             depth_pass,
@@ -162,6 +189,12 @@ end
 ##   Layer rendering   ##
 #########################
 
+const DEFAULT_SAMPLER = Sampler{2}(
+    wrapping = WrapModes.repeat,
+    pixel_filter = PixelFilters.smooth,
+    mip_filter = PixelFilters.smooth
+)
+
 "A renderable voxel material."
 mutable struct LayerRenderer
     shader_program::VoxelPrograms
@@ -179,8 +212,8 @@ function LayerRenderer(data::LayerData, depth_only_programs::LayerDepthRenderer)
     end
     fragment_header = sprint() do io::IO
         print(io, defines, "\n")
-        for u_name in values(data.textures)
-            print(io, "uniform sampler2D ", u_name, ";\n")
+        for tex_data::LayerTexture in values(data.textures)
+            print(io, "uniform sampler2D ", tex_data.code_name, ";\n")
         end
         print(io, "#include <voxels/common_frag.shader>")
     end
@@ -193,7 +226,7 @@ function LayerRenderer(data::LayerData, depth_only_programs::LayerDepthRenderer)
     # Compile the Programs.
     programs = make_voxel_program(fragment_shader, fragment_header, defines)
 
-    textures = Dict(Iterators.map(data.textures) do (path, uniform_name)
+    textures = Dict(Iterators.map(data.textures) do (path, tex_data)
         # Check that the file exists.
         full_path = joinpath(VOXELS_ASSETS_PATH, path)
         if !isfile(full_path)
@@ -201,26 +234,22 @@ function LayerRenderer(data::LayerData, depth_only_programs::LayerDepthRenderer)
         end
 
         # Pick a sampler for this texture.
-        sampler = get(data.samplers, uniform_name, Sampler{2}(
-            wrapping = WrapModes.repeat,
-            pixel_filter = PixelFilters.smooth,
-            mip_filter = PixelFilters.smooth
-        ))
+        sampler = exists(tex_data.sampler) ? tex_data.sampler : DEFAULT_SAMPLER
 
-        # Load the pixels as 8-bit RGB.
-        #TODO: Allow for customization of the format
+        # Load the pixels.
         tex = try
             load_tex(full_path, vRGBu8,
                      SimpleFormat(FormatTypes.normalized_uint,
-                                  SimpleFormatComponents.RGB,
+                                  tex_data.channels,
                                   SimpleFormatBitDepths.B8),
-                     sampler = sampler)
+                     sampler = sampler,
+                     use_mips=tex_data.use_mips)
         catch e
             #TODO: Return an error texture instead of a hard crash
             error("Unable to load texture '", full_path, "': ", e)
         end
 
-        return uniform_name => tex
+        return tex_data.code_name => tex
     end)
 
     if !(haskey(depth_only_programs.by_file, data.depth_pass))

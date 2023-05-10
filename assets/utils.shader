@@ -29,8 +29,7 @@ float border(float x, float target, float thickness, float dropoff)
 }
 
 //Distance-squared is faster to compute in 2D+, but not in 1D.
-//Some noise is defined with the help of macros to work with any dimensionality,
-//    and so is agnostic to the dimensionality.
+//Some noise is defined with the help of macros to work with any-dimensional data.
 float efficientDist(float a, float b) { return abs(b - a); }
 float efficientDist(vec2 a, vec2 b) { vec2 delta = b - a; return dot(delta, delta); }
 float efficientDist(vec3 a, vec3 b) { vec3 delta = b - a; return dot(delta, delta); }
@@ -80,7 +79,6 @@ vec3 tripleLerp(vec3 a, vec3 b, vec3 c, float t)
     return isFirstHalf ?
             mix(a, b, INV_LERP(0.0, 0.5, t)) :
             mix(b, c, INV_LERP(0.5, 1.0, t));
-    
 }
 //Smoothly interpolates between a beginning, midpoint, and endpoint.
 float tripleSmoothstep(float a, float b, float c, float t)

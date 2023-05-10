@@ -2,12 +2,14 @@
     "frag_shader_path": "scifi/scifi.frag",
 
     "textures": {
-        "scifi/Tile.png": "u_tex_map"
-    },
-    "samplers": {
-        "u_tex_map": {
-            "pixel_filter": "rough",
-            "mip_filter": "smooth"
+        "scifi/Tile.png": {
+            "code_name": "u_tex_map",
+            "sampler": {
+                "pixel_filter": "rough",
+                "mip_filter": null
+            },
+            "use_mips": false,
+            "channels": "RGB"
         }
     },
 
