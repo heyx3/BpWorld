@@ -110,46 +110,40 @@ Base.@kwdef mutable struct SceneData <:GuiData
     current_file_path::Optional{Vector{String}} = nothing
 
     contents::String = replace("""
-        # Add a box. Later we will use the inflated box to mask out some terrain.
-        box_min = { 0.065 }.xxx
-        box_max = { 0.435 }.xxx
-        box = Box(
-            layer = 0x2,
-            min = box_min,
-            max = box_max
-        )
-        box_inflated = Box(
-            layer = 0x2,
-            min = box_min / 1.3,
-            max = box_max * 1.3
-        )
-
-        # Add a sphere. Later we will use the inflated sphere to mask out some terrain.
-        sphere_radius = 0.3
-        sphere_center = { { 0.25 }.xx, 0.75 }
-        sphere = Sphere(
-            layer = 0x3,
-            center = sphere_center,
-            radius = sphere_radius
-        )
-        sphere_inflated = Sphere(
-            layer = 0x3,
-            center = sphere_center,
-            radius = sphere_radius * 1.3
-        )
-
-        # Generate some Perlin noise "terrain".
+        #layer 1 rocks/rocks.json
         terrain = BinaryField(
             layer = 0x1,
             field = 0.2 + (0.5 * perlin(pos * 5.0))
         )
+        
+        #layer 2 scifi/scifi-blue.json
+        box = Box(
+            layer = 0x2,
+            min = { 0.065, 0.065, 0.065 },
+            max = { 0.435 }.xxx,
+            mode = edges
+        )
+        
+        #layer 3 scifi/scifi-red.json
+        sphere = Sphere(
+            layer = 0x3,
+            center = { {0.25}.xx, 0.75 },
+            radius = 0.3
+        )
+        
         # Remove any terrain near the box or sphere.
+        box_inflated = copy(box,
+            size *= 1.3,
+            mode = filled
+        )
+        sphere_inflated = copy(sphere,
+            radius *= 1.3
+        )
         terrain = Difference(
             terrain,
             [ box_inflated, sphere_inflated ]
         )
-
-        # Combine the terrain with the box and sphere.
+        
         return Union(box, sphere, terrain)""", "        "=>"")
 
     refresh_wait_interval_seconds::Float64 = 3.0

@@ -56,6 +56,32 @@ SceneInputs(window::GLFW.Window; kw...) = SceneInputs(
     kw...
 )
 
+####################
+#   Layer parsing  #
+####################
+
+"
+Grabs the `#layer N path/to/layer.json` statements from the given scene file.
+Returns the scene file with those statements stripped (leaving only the DSL),
+    and the contents of those statements.
+"
+function grab_layers(contents::AbstractString
+                    )::Tuple{AbstractString,
+                             Dict{VoxelElement, AbstractString}}
+    layers = Dict{VoxelElement, AbstractString}()
+    rgx = r"(?m)^#layer\s+([0-9]+)\s+(.+)$"
+    for match in eachmatch(rgx, contents)
+        (layer_idx, layer_relative_path) = match.captures
+        layer_idx = parse(VoxelElement, layer_idx)
+        @bp_check(!haskey(layers, layer_idx),
+                  "Layer ", layer_idx, " is named more than once: ",
+                    "\"", layer_relative_path, "\" and then \"",
+                    layers[layer_idx], "\"")
+        layers[layer_idx] = layer_relative_path
+    end
+    return (replace(contents, rgx=>""), layers)
+end
+
 
 #############
 #   World   #
@@ -298,18 +324,87 @@ Processes a new scene file in the background, eventually replacing the current s
 If the scene file is invalid, returns an error message.
 Otherwise, returns `nothing` to indicate that it was accepted.
 "
-function start_new_scene(world::World, new_contents::AbstractString)::Optional{AbstractString}
-    # First try parsing the scene.
-    # If that fails, don't change the world at all.
+function start_new_scene(world::World, new_contents::AbstractString,
+                         depth_only_programs::Voxels.LayerDepthRenderer
+                        )::Optional{AbstractString}
+    # As soon as something fails, roll back the changes and exit.
+
+    # Parse voxel layers.
+    local new_layers
+    try
+        (new_contents, new_layers) = grab_layers(new_contents)
+    catch e
+        return "Layer error: $(sprint(showerror, e))"
+    end
+
+    # Parse voxel generator.
     local scene_expr
     try
         scene_expr = Meta.parseall(new_contents)
     catch e
-        return "Invalid Julia syntax: $(sprint(showerror, e))"
+        return "Scene has invalid syntax $(sprint(showerror, e))"
     end
+
+    # Evaluate the voxel generator expression.
     scene_generator = Voxels.Generation.eval_dsl(scene_expr)
     if scene_generator isa Voxels.Generation.DslError
         return string(scene_generator.msg_data...)
+    elseif !isa(scene_generator, Voxels.Generation.AbstractVoxelGenerator)
+        return "Output of the scene is not a voxel generator! It's a $(typeof(scene_generator))"
+    end
+
+    # Load the voxel layers.
+    # Failures are mapped to an error message and caught later on.
+    local loaded_layers::Dict{Int, Union{Voxels.LayerData, String}}
+    loaded_layers = Dict(Iterators.map(new_layers) do (layer_idx, relative_path)
+        full_path = joinpath(VOXELS_ASSETS_PATH, relative_path)
+        if !isfile(full_path)
+            return layer_idx => "File doesn't exist: '$full_path'"
+        end
+        parsed_data = open(full_path, "r") do f::IO
+            try
+                return JSON3.read(f, Voxels.LayerData; allow_inf=true)
+            catch e
+                return "Unable to load '$full_path': $(sprint(showerror, e))"
+            end
+        end
+        return layer_idx => parsed_data
+    end)
+    # Report failed layers, and if any exist, clean up the other ones that didn't fail.
+    failure_msg = nothing
+    for (layer_idx, layer_data) in loaded_layers
+        if layer_data isa String
+            if isnothing(failure_msg)
+                failure_msg = "Some layers failed to load:"
+            end
+            failure_msg = "$failure_msg\n\t$layer_data"
+        end
+    end
+    if exists(failure_msg)
+        return failure_msg
+    end
+
+    # Generate renderers for each voxel layer.
+    layer_renderers = map(sort!(collect(keys(loaded_layers)))) do layer_idx
+        layer_data = loaded_layers[layer_idx]
+        try
+            return Voxels.LayerRenderer(layer_data, depth_only_programs)
+        catch e
+            return "Layer $layer_idx: $(sprint(showerror, e))"
+        end
+    end
+    failure_msg = nothing
+    for layer_renderer in layer_renderers
+        if layer_renderer isa String
+            if isnothing(failure_msg)
+                failure_msg = "Some layers failed to compile:"
+            end
+            failure_msg = "$failure_msg\n\t$layer_renderer"
+        end
+    end
+    if exists(failure_msg)
+        close.(rnd for rnd in layer_renderers if (rnd isa Voxels.LayerRenderer))
+        return failure_msg
     end
 
     # The scene parsed correctly, so kick off its generation.
@@ -317,7 +412,7 @@ function start_new_scene(world::World, new_contents::AbstractString)::Optional{A
         close(world.next_voxels)
     end
     world.next_voxels = Voxels.Scene(v3i(64, 64, 64), scene_generator,
-                                     v3f(10, 10, 10), world.voxels.layers)
+                                     v3f(10, 10, 10), layer_renderers)
     return nothing
 end
 
@@ -431,24 +526,4 @@ function on_window_resized(world::World, window::GLFW.Window, new_size::v2i)
             world.target_tex_normals
         ) = new_data
     end
-end
-
-function reload_shaders(world::World, assets::Assets)
-    world.voxels.layers = [
-        Voxels.LayerRenderer(JSON3.read(open(io -> read(io, String),
-                                             joinpath(VOXELS_ASSETS_PATH, "rocks", "rocks.json"),
-                                             "r"),
-                                        Voxels.LayerData),
-                             assets.prog_voxels_depth_only),
-        Voxels.LayerRenderer(JSON3.read(open(io -> read(io, String),
-                                             joinpath(VOXELS_ASSETS_PATH, "scifi", "scifi-blue.json"),
-                                             "r"),
-                                        Voxels.LayerData),
-                             assets.prog_voxels_depth_only),
-        Voxels.LayerRenderer(JSON3.read(open(io -> read(io, String),
-                                             joinpath(VOXELS_ASSETS_PATH, "scifi", "scifi-red.json"),
-                                             "r"),
-                                        Voxels.LayerData),
-                             assets.prog_voxels_depth_only)
-    ]
 end

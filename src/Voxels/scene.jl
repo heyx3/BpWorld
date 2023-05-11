@@ -96,15 +96,10 @@ function Base.close(scene::Scene)
 
     # Clean up owned GL assets.
     close(scene.grid_tex3d)
-    for data in scene.layer_meshes
-        if exists(data)
-            for resource in data
-                close(resource)
-            end
-        end
-    end
+    close.(Iterators.flatten(Iterators.filter(exists, scene.layer_meshes)))
 
-    # Note that the voxel layer assets are not owned by the scene.
+    # Clean up voxel layer assets.
+    close.(scene.layers)
 end
 
 function update(scene::Scene, delta_seconds::Float32)

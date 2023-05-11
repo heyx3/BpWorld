@@ -198,7 +198,7 @@ const DEFAULT_SAMPLER = Sampler{2}(
 "A renderable voxel material."
 mutable struct LayerRenderer
     shader_program::VoxelPrograms
-    shader_program_depth_only_name::AbstractString
+    shader_program_depth_only_name::AbstractString # Most layers will use the same program
 
     # Each texture is mapped to its uniform name.
     textures::Dict{AbstractString, Texture}
