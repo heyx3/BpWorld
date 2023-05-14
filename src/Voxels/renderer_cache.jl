@@ -159,14 +159,20 @@ function try_load_renderer!(cache::CachedRenderer, error_material::LayerMaterial
     # If anything goes wrong, fall back to the error material.
     local new_mat::LayerMaterial
     try
-        layer_data = open(cache.source_full_path, "r") do f
+        layer_data::LayerData = open(cache.source_full_path, "r") do f
             JSON3.read(f, LayerData)
         end
         new_mat = LayerMaterial(layer_data)
-
+        # The material compiled successfully, so update the list of file associations.
+        cache.files = Dict(f => unix2datetime(stat(f).mtime) for f in [
+            joinpath(VOXEL_LAYERS_PATH, layer_data.frag_shader_path),
+            ( joinpath(VOXEL_LAYERS_PATH, t)
+                for t in keys(layer_data.textures) )...
+        ])
     catch e
         new_mat = error_material
         #TODO: Report the error somehow
+        rethrow()
     end
 
     # Delete the previous version of the material.

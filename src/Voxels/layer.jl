@@ -49,12 +49,6 @@ struct LayerData
     #TODO: relative to the root folder if it starts with a slash, relative to the layer JSON file otherwise
     textures::Dict{AbstractString, LayerTexture}
 
-    # The fragment shader to use for a depth-only pass.
-    # This shader file should be in a specific "assets" sub-folder.
-    # Defaults to "basic.frag".
-    depth_pass::AbstractString
-
-
     # Any #defines you want to add in the fragment shader.
     # The keys are the token names, and the values are the token values.
     # E.x. the value "ABC" => "1" translates into "#define ABC 1".
@@ -62,16 +56,13 @@ struct LayerData
     preprocessor_defines::Dict{AbstractString, AbstractString}
 
     # This constructor handles 'nothing' values for each field, for StructTypes deserialization.
-    LayerData(frag_shader_path, textures, depth_pass, preprocessor_defines) = new(
+    LayerData(frag_shader_path, textures, preprocessor_defines) = new(
         isnothing(frag_shader_path) ?
             error("Field 'frag_shader_path' must be set for a voxel asset!") :
             frag_shader_path,
         isnothing(textures) ?
             Dict{AbstractString, LayerTexture}() :
             textures,
-        isnothing(depth_pass) ?
-            "basic.frag" :
-            depth_pass,
         isnothing(preprocessor_defines) ?
             Dict{AbstractString, AbstractString}() :
             preprocessor_defines
