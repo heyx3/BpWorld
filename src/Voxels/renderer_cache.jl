@@ -50,12 +50,7 @@ mutable struct CachedRenderer
                    disk_check_interval = Millisecond(rand(DISK_CHECK_INTERVAL_MS))
                   ) = new(
         instance,
-        if file_paths isa FileAssociations
-            file_paths
-        else
-            Dict(f => stat(f).mtime for f in file_paths)
-        end,
-        source_full_path,
+        file_paths, source_full_path,
         last_check_time, disk_check_interval
     )
 end
