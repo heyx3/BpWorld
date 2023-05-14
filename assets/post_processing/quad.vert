@@ -1,13 +1,4 @@
-//Tell the linter about stuff that the julia program normally injects.
-#version 460
-#extension GL_GOOGLE_include_directive: require
-#extension GL_ARB_bindless_texture : require
-#extension GL_ARB_gpu_shader_int64 : require
-// #J#J#
-//  ^^ Tells the Julia project to cut off everything before it
-
-
-//You may customize this file by #defining things and then including it.
+//You may customize this file by #defining things before including it.
 
 // '#define QUAD_TRANSFORM 1' to allow a 3x3 matrix transform on the vertices before rendering.
 #ifndef QUAD_TRANSFORM 

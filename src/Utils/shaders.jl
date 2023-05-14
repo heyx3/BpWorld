@@ -6,7 +6,7 @@ This allows you to add things for the IDE/linter only.
 const SHADER_CUTOFF_TOKEN = "#J#J#"
 
 "Processes a shader file to remove the `SHADER_CUTOFF_TOKEN` and execute `#include` statements."
-function process_shader_contents(str::AbstractString, insert_at_top::AbstractString = "")
+function process_shader_contents(str::AbstractString, insert_at_top::AbstractString = "")::AbstractString
     # First, cut off everything above the special cutoff token.
     while true
         try_find::Optional{UnitRange{Int}} = findfirst(SHADER_CUTOFF_TOKEN, str)
@@ -60,6 +60,8 @@ function process_shader_contents(str::AbstractString, insert_at_top::AbstractStr
             local file_contents::AbstractString
             if file_path in included_already
                 file_contents = ""
+            elseif !isfile(file_path)
+                file_contents = "#error File not found: \"$file_path\""
             else
                 push!(included_already, file_path)
                 file_contents = String(open(read, file_path, "r"))

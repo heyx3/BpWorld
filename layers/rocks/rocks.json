@@ -1,0 +1,17 @@
+{
+    "frag_shader_path": "rocks/rocks.frag",
+    "textures": {
+        "rocks/rocks-Albedo.png": {
+            "code_name": "u_tex_albedo",
+            "channels": "RGB"
+        },
+        "rocks/rocks-Normal.png": {
+            "code_name": "u_tex_normal",
+            "channels": "RGB"
+        },
+        "rocks/rocks-Surface.png": {
+            "code_name": "u_tex_surface",
+            "channels": "RGB"
+        }
+    }
+}

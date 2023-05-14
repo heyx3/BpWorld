@@ -66,7 +66,6 @@ function main()
             # Handle user input.
             if button_value(world.inputs.reload_shaders)
                 reload_shaders(assets)
-                reload_shaders(world, assets)
             end
             if is_quit_confirming
                 draw_scale = v3f((assets.tex_quit_confirmation.size.xy / get_window_size())...,

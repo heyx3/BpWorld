@@ -1,12 +1,6 @@
-//Tell the linter about stuff that the julia program normally injects.
-#version 460
-#extension GL_GOOGLE_include_directive: require
-#extension GL_ARB_bindless_texture : require
-#extension GL_ARB_gpu_shader_int64 : require
-// #J#J#
-//  ^^ Tells the Julia project to cut off everything before it
+//This program is for a voxel layer that has been meshed.
+//The data comes in all pre-processed and packed tightly.
 
-//Input vertex data is packed tightly.
 in uvec3 vIn_packedInput;
 struct UnpackedVertexInput
 {
@@ -27,8 +21,10 @@ UnpackedVertexInput unpackInput(uvec3 vIn)
                                int(bFaceDir * 2) - 1);
 }
 
+#include <../assets/voxels/vert_geom/vert_processing.shader>
 
-#include <voxels/vert_processing.shader>
+
+
 out vec3 fIn_worldPos;
 out vec3 fIn_voxelPos;
 out vec2 fIn_uv;

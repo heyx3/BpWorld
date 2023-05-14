@@ -1,0 +1,20 @@
+{
+    "frag_shader_path": "scifi/scifi.frag",
+
+    "textures": {
+        "scifi/Tile.png": {
+            "code_name": "u_tex_map",
+            "sampler": {
+                "pixel_filter": "rough",
+                "mip_filter": null
+            },
+            "use_mips": false,
+            "channels": "RGB"
+        }
+    },
+
+    "preprocessor_defines": {
+        "GRADIENT_A": "vec3(0.45, 0.08, 0.00)",
+        "GRADIENT_B": "vec3(1.00, 0.10, 0.10)"
+    }
+}

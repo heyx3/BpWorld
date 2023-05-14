@@ -1,15 +1,7 @@
-//Tell the linter about stuff that the julia program normally injects.
-#version 460
-#extension GL_GOOGLE_include_directive: require
-//#extension GL_ARB_bindless_texture : require
-#extension GL_ARB_gpu_shader_int64 : require
-// #J#J#
-//  ^^ Tells the Julia project to cut off everything before it
-
 //#TODO: Use a compute shader instead
 
-#include <utils.shader>
-#include <post_processing/fog.shader>
+#include <../assets/voxels/utils.shader>
+#include <../assets/post_processing/fog.shader>
 
 struct GBuffer
 {
