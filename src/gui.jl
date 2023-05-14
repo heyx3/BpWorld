@@ -40,8 +40,7 @@ function gui_main_region(gui::GUI, assets::Assets, world::World, view::PostProce
             gui_fog(world.fog, world.fog_gui)
         end
         gui_within_fold("Scene") do
-            gui_scene(new_scene_str -> start_new_scene(world, new_scene_str,
-                                                       assets.prog_voxels_depth_only),
+            gui_scene(new_scene_str -> start_new_scene(world, new_scene_str),
                       world.scene, world.scene_gui)
         end
     end

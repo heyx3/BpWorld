@@ -1,3 +1,5 @@
+//Automatically inserted into every shader.
+
 // Mostly taken from the following shaders:
 //    https://www.shadertoy.com/view/7stBDH
 

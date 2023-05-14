@@ -4,16 +4,10 @@ mutable struct Scene
     grid_tex3d::GL.Texture # Red-only, 8-bit uint
     world_scale::v3f
 
-    layers::Vector{LayerRenderer}
-
-    # In depth-only rendering, voxels can share their materials.
-    # So, voxel layers are sorted by material before a depth-only pass.
-    buffer_sorted_voxel_layers::Vector{Tuple{LayerRenderer, GL.Program,
-                                             Union{GL.Mesh, Tuple{GL.Texture, Int}}}}
-
     # There is an ongoing Task to compute the voxels, and then each layer's mesh.
     is_finished_setting_up::Bool
-    layer_meshes::Vector{Optional{Tuple{GL.Buffer, GL.Buffer, GL.Mesh}}}
+    layer_meshes::Vector{Tuple{AbstractString,
+                               Optional{Tuple{GL.Buffer, GL.Buffer, GL.Mesh}}}}
     mesher::VoxelMesher
     voxel_task::Task
     meshing_channel_to_main::Channel{Int} # Worker thread sends back the index of each meshed layer
@@ -25,14 +19,13 @@ mutable struct Scene
                                              # Send 'true' to acknowledge, 'false' to kill the task.
 end
 
-function Scene(grid_size::v3i, grid_generator::Generation.AbstractVoxelGenerator,
-               world_scale::v3f,
-               assets::Vector{LayerRenderer}
+function Scene(grid_size::v3i,
+               grid_generator::Generation.AbstractVoxelGenerator,
+               layer_names::AbstractVector{<:AbstractString},
+               world_scale::v3f
               )::Scene
     grid::VoxelGrid = fill(zero(VoxelElement),
                            grid_size...)
-
-    #TODO: Check the range of voxel outputs of the generator; make sure they don't exceed the number of assets
 
     # On a separate task, generate voxels and then the meshes.
     mesher = VoxelMesher()
@@ -44,7 +37,7 @@ function Scene(grid_size::v3i, grid_generator::Generation.AbstractVoxelGenerator
 
         #TODO: Use one big buffer for the voxel data, signal back to the main thread after every slice
 
-        for i in 1:length(assets)
+        for i in 1:length(layer_names)
             calculate_mesh(grid, UInt8(i), mesher)
             put!(meshing_channel_to_main, i)
 
@@ -75,11 +68,9 @@ function Scene(grid_size::v3i, grid_generator::Generation.AbstractVoxelGenerator
 
         world_scale,
 
-        assets,
-        Vector{Tuple{LayerRenderer, GL.Program, Union{GL.Mesh, Tuple{GL.Texture, Int}}}}(),
-
         false,
-        fill(nothing, length(assets)),
+        map(i -> (layer_names[i], nothing),
+            1:length(layer_names)),
         mesher,
         voxel_task,
         meshing_channel_to_main,
@@ -96,10 +87,7 @@ function Base.close(scene::Scene)
 
     # Clean up owned GL assets.
     close(scene.grid_tex3d)
-    close.(Iterators.flatten(Iterators.filter(exists, scene.layer_meshes)))
-
-    # Clean up voxel layer assets.
-    close.(scene.layers)
+    close.(Iterators.flatten(m[2] for m in scene.layer_meshes if exists(m[2])))
 end
 
 function update(scene::Scene, delta_seconds::Float32)
@@ -113,7 +101,7 @@ function update(scene::Scene, delta_seconds::Float32)
         # Otherwise, it finished meshing a voxel layer.
         else
             @bpworld_assert(!scene.is_finished_setting_up)
-            @bpworld_assert(finished_idx <= length(scene.layers))
+            @bpworld_assert(finished_idx <= length(scene.layer_meshes))
             println("Layer ", finished_idx, " is done meshing")
 
             # Don't bother generating an empty mesh.
@@ -127,14 +115,17 @@ function update(scene::Scene, delta_seconds::Float32)
                         voxel_vertex_layout(1),
                         MeshIndexData(inds, eltype(scene.mesher.index_buffer))
                     )
-                    scene.layer_meshes[finished_idx] = (verts, inds, mesh)
+                    let element = scene.layer_meshes[finished_idx]
+                        @set! element[2] = (verts, inds, mesh)
+                        scene.layer_meshes[finished_idx] = element
+                    end
                 end
             end
 
             put!(scene.meshing_channel_to_worker, true)
 
             # If this was the last layer, we're finished.
-            if finished_idx == length(scene.layers)
+            if finished_idx == length(scene.layer_meshes)
                 scene.is_finished_setting_up = true
             end
         end
@@ -145,16 +136,17 @@ function update(scene::Scene, delta_seconds::Float32)
     end
 end
 
-function render(scene::Scene, cam::Cam3D, mat_cam_viewproj::fmat4, elapsed_seconds::Float32)
-    for i::Int in 1:length(scene.layers)
-        if exists(scene.layer_meshes[i])
-            render_voxels(scene.layer_meshes[i][3],
-                          scene.layers[i],
+function render(scene::Scene, cam::Cam3D,
+                mat_cam_viewproj::fmat4, elapsed_seconds::Float32,
+                material_cache::RendererCache)
+    for i::Int in 1:length(scene.layer_meshes)
+        material = get_material!(material_cache, scene.layer_meshes[i][1])
+        if exists(scene.layer_meshes[i][2])
+            render_voxels(scene.layer_meshes[i][2][3], material,
                           zero(v3f), scene.world_scale,
                           cam, elapsed_seconds, mat_cam_viewproj)
         else
-            render_voxels(scene.grid_tex3d, i,
-                          scene.layers[i],
+            render_voxels(scene.grid_tex3d, i, material,
                           zero(v3f), scene.world_scale,
                           cam, elapsed_seconds, mat_cam_viewproj)
         end
@@ -162,31 +154,17 @@ function render(scene::Scene, cam::Cam3D, mat_cam_viewproj::fmat4, elapsed_secon
 
     return nothing
 end
-function render_depth_only(scene::Scene, renderers::LayerDepthRenderer,
-                           cam::Cam3D, mat_cam_viewproj::fmat4)
-    # Sort the voxel layers by their depth-only shader, to minimize driver overhead.
-    # Assign each entry some data related to rendering.
-    voxel_layers::Vector = scene.buffer_sorted_voxel_layers
-    empty!(voxel_layers)
-    for (layer_idx, (layer, resources)) in enumerate(zip(scene.layers, scene.layer_meshes))
-        prog = renderers.by_file[layer.shader_program_depth_only_name]
-        # Check whether or not we'll be using the preview shader.
-        if exists(resources)
-            (buf1, buf2, mesh::GL.Mesh) = resources
-            push!(voxel_layers, (layer, prog.meshed, mesh))
+function render_depth_only(scene::Scene,
+                           cam::Cam3D, mat_cam_viewproj::fmat4,
+                           material_cache::RendererCache)
+    for i::Int in 1:length(scene.layer_meshes)
+        material = get_material!(material_cache, scene.layer_meshes[i][1])
+        if exists(scene.layer_meshes[i][2])
+            render_voxels_depth_only(scene.layer_meshes[i][2][3], material,
+                                     zero(v3f), scene.world_scale,
+                                     cam, mat_cam_viewproj)
         else
-            push!(voxel_layers, (layer, prog.preview, (scene.grid_tex3d, layer_idx)))
-        end
-    end
-    sort!(voxel_layers, by=(data -> GL.gl_type(GL.get_ogl_handle(data[2]))))
-
-    for (layer, prog, data) in voxel_layers
-        if data isa GL.Mesh
-            render_voxels_depth_only(data, layer, renderers,
-                                    zero(v3f), scene.world_scale,
-                                    cam, mat_cam_viewproj)
-        else
-            render_voxels_depth_only(data..., layer, renderers,
+            render_voxels_depth_only(scene.grid_tex3d, i, material,
                                      zero(v3f), scene.world_scale,
                                      cam, mat_cam_viewproj)
         end

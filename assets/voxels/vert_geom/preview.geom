@@ -1,17 +1,9 @@
-//Tell the linter about stuff that the julia program normally injects.
-#version 460
-#extension GL_GOOGLE_include_directive: require
-#extension GL_ARB_bindless_texture : require
-#extension GL_ARB_gpu_shader_int64 : require
-// #J#J#
-//  ^^ Tells the Julia project to cut off everything before it
-
 //This program is for a voxel layer that hasn't been meshed yet.
 //It dynamically decides in the geometry shader whether each face of each voxel should be rendered,
 //    which is obviously slower but requires no pre-processing.
 //It will use the same fragment shader as the other program for meshed voxels.
 
-#include <voxels/vert_processing.shader>
+#include <../assets/voxels/vert_geom/vert_processing.shader>
 
 layout (points) in;
 in ivec3 gIn_voxelIdx[];

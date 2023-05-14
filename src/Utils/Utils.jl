@@ -9,11 +9,15 @@ using Bplus,
       Bplus.Helpers, Bplus.SceneTree, Bplus.Input
 #
 
+"The root path of this project"
+const ROOT_PATH = joinpath(@__DIR__, "..", "..")
 
-"The path where all assets should be placed"
-const ASSETS_PATH = joinpath(@__DIR__, "..", "..", "assets")
 "The path where all scene files should be placed"
-const SCENES_PATH = joinpath(@__DIR__, "..", "..", "scenes")
+const SCENES_PATH =       joinpath(ROOT_PATH, "scenes")
+"The path where all voxel layers should be placed"
+const VOXEL_LAYERS_PATH = joinpath(ROOT_PATH, "layers")
+"The path where internal assets should be placed"
+const ASSETS_PATH =       joinpath(ROOT_PATH, "assets")
 
 "The extension (no period) for scene files"
 const SCENES_EXTENSION = "scene"
@@ -62,7 +66,9 @@ export @bpworld_assert, @bpworld_debug,
        @omit_type,
        intersperse,
        check_gl_logs,
-       ASSETS_PATH, SCENES_PATH, SCENES_EXTENSION,
+       ROOT_PATH,
+       VOXEL_LAYERS_PATH, ASSETS_PATH, SCENES_PATH,
+       SCENES_EXTENSION,
        process_shader_contents, pixel_converter, load_tex
 
 end # module

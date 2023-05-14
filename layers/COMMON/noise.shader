@@ -1,9 +1,6 @@
 // Mostly taken from the following shaders:
 //    https://www.shadertoy.com/view/7stBDH
 
-#include "utils.shader"
-
-
 ////////////////////
 //    Hashing     //
 ////////////////////

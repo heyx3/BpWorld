@@ -56,6 +56,7 @@ SceneInputs(window::GLFW.Window; kw...) = SceneInputs(
     kw...
 )
 
+
 ####################
 #   Layer parsing  #
 ####################
@@ -87,19 +88,10 @@ end
 #   World   #
 #############
 
-"Re-usable allocations."
-struct SceneCollectionBuffers
-    sorted_voxel_layers::Vector{Tuple{Voxels.LayerRenderer, Mesh}}
-
-    SceneCollectionBuffers() = new(
-        Vector{Tuple{Voxels.LayerRenderer, Mesh}}()
-    )
-end
-
-
 mutable struct World
     voxels::Voxels.Scene
     next_voxels::Optional{Voxels.Scene} # New scene that's currently being generated in the background.
+    voxel_materials::Voxels.RendererCache
 
     sun::SunData
     sun_gui::SunDataGui
@@ -125,8 +117,6 @@ mutable struct World
     target_tex_color::Texture  # HDR, RGB is albedo, alpha is emissive strength
     target_tex_surface::Texture # R=Metallic, G=Roughness
     target_tex_normals::Texture #  RGB = signed normal vector
-
-    buffers::SceneCollectionBuffers
 end
 function Base.close(s::World)
     # Try to close() everything that isnt specifically blacklisted.
@@ -195,33 +185,22 @@ end
 function World(window::GLFW.Window, assets::Assets)
     window_size::v2i = get_window_size(window)
 
-    # Hard-code the voxel assets to load for now.
-    voxel_assets = [
-        Voxels.LayerRenderer(JSON3.read(open(io -> read(io, String),
-                                             joinpath(VOXELS_ASSETS_PATH, "rocks", "rocks.json"),
-                                             "r"),
-                                        Voxels.LayerData),
-                             assets.prog_voxels_depth_only),
-        Voxels.LayerRenderer(JSON3.read(open(io -> read(io, String),
-                                             joinpath(VOXELS_ASSETS_PATH, "scifi", "scifi-blue.json"),
-                                             "r"),
-                                        Voxels.LayerData),
-                             assets.prog_voxels_depth_only),
-        Voxels.LayerRenderer(JSON3.read(open(io -> read(io, String),
-                                             joinpath(VOXELS_ASSETS_PATH, "scifi", "scifi-red.json"),
-                                             "r"),
-                                        Voxels.LayerData),
-                             assets.prog_voxels_depth_only)
-    ]
-
     gui_sun = SunData()
     gui_fog = FogData()
     gui_scene = SceneData()
 
     # Generate some voxel data.
-    voxels = Voxels.Generation.eval_dsl(Meta.parseall(gui_scene.contents))
-    voxel_scene = Voxels.Scene(v3i(64, 64, 64), voxels,
-                               v3f(10, 10, 10), voxel_assets)
+    # Parse voxel layers.
+    (scene_dsl, layers_by_id) = grab_layers(gui_scene.contents)
+    scene_dsl_expr = Meta.parseall(scene_dsl)
+    voxel_generator::Voxels.Generation.AbstractVoxelGenerator =
+        Voxels.Generation.eval_dsl(scene_dsl_expr)
+    voxel_scene = Voxels.Scene(v3i(64, 64, 64), voxel_generator,
+                               map(kvp -> kvp[2],
+                                   sort!(collect(layers_by_id), by=kvp->kvp[1])),
+                               v3f(10, 10, 10))
+
+    voxel_materials = RendererCache()
 
     g_buffer_data = set_up_g_buffer(window_size)
     sun_shadowmap_data = set_up_sun_shadowmap(v2i(1024, 1024))
@@ -230,6 +209,7 @@ function World(window::GLFW.Window, assets::Assets)
     return World(
         voxel_scene,
         nothing,
+        voxel_materials,
 
         #TODO: Save GUI data on close, load it again on start
         gui_sun, init_gui_state(gui_sun),
@@ -254,9 +234,7 @@ function World(window::GLFW.Window, assets::Assets)
         ),
         false, SceneInputs(window), @f32(0.0),
 
-        g_buffer_data...,
-
-        SceneCollectionBuffers()
+        g_buffer_data...
     )
 end
 
@@ -306,6 +284,9 @@ function update(world::World, delta_seconds::Float32, window::GLFW.Window)
     )
     (world.cam, world.cam_settings) = cam_update(world.cam, world.cam_settings, cam_input, delta_seconds)
 
+    # Update cached disk assets.
+    check_disk_modifications!(world.voxel_materials)
+
     # Update the scene.
     Voxels.update(world.voxels, delta_seconds)
     # See if the next scene is finished loading, and if so, replace the current scene.
@@ -325,17 +306,19 @@ If the scene file is invalid, returns an error message.
 Otherwise, returns `nothing` to indicate that it was accepted.
 "
 function start_new_scene(world::World, new_contents::AbstractString,
-                         depth_only_programs::Voxels.LayerDepthRenderer
                         )::Optional{AbstractString}
     # As soon as something fails, roll back the changes and exit.
 
     # Parse voxel layers.
-    local new_layers
+    local new_layers::Dict{VoxelElement, AbstractString}
     try
         (new_contents, new_layers) = grab_layers(new_contents)
     catch e
         return "Layer error: $(sprint(showerror, e))"
     end
+    layer_names = map(kvp -> kvp[2],
+                      sort!(collect(new_layers),
+                            by=kvp->kvp[1]))
 
     # Parse voxel generator.
     local scene_expr
@@ -353,66 +336,13 @@ function start_new_scene(world::World, new_contents::AbstractString,
         return "Output of the scene is not a voxel generator! It's a $(typeof(scene_generator))"
     end
 
-    # Load the voxel layers.
-    # Failures are mapped to an error message and caught later on.
-    local loaded_layers::Dict{Int, Union{Voxels.LayerData, String}}
-    loaded_layers = Dict(Iterators.map(new_layers) do (layer_idx, relative_path)
-        full_path = joinpath(VOXELS_ASSETS_PATH, relative_path)
-        if !isfile(full_path)
-            return layer_idx => "File doesn't exist: '$full_path'"
-        end
-        parsed_data = open(full_path, "r") do f::IO
-            try
-                return JSON3.read(f, Voxels.LayerData; allow_inf=true)
-            catch e
-                return "Unable to load '$full_path': $(sprint(showerror, e))"
-            end
-        end
-        return layer_idx => parsed_data
-    end)
-    # Report failed layers, and if any exist, clean up the other ones that didn't fail.
-    failure_msg = nothing
-    for (layer_idx, layer_data) in loaded_layers
-        if layer_data isa String
-            if isnothing(failure_msg)
-                failure_msg = "Some layers failed to load:"
-            end
-            failure_msg = "$failure_msg\n\t$layer_data"
-        end
-    end
-    if exists(failure_msg)
-        return failure_msg
-    end
-
-    # Generate renderers for each voxel layer.
-    layer_renderers = map(sort!(collect(keys(loaded_layers)))) do layer_idx
-        layer_data = loaded_layers[layer_idx]
-        try
-            return Voxels.LayerRenderer(layer_data, depth_only_programs)
-        catch e
-            return "Layer $layer_idx: $(sprint(showerror, e))"
-        end
-    end
-    failure_msg = nothing
-    for layer_renderer in layer_renderers
-        if layer_renderer isa String
-            if isnothing(failure_msg)
-                failure_msg = "Some layers failed to compile:"
-            end
-            failure_msg = "$failure_msg\n\t$layer_renderer"
-        end
-    end
-    if exists(failure_msg)
-        close.(rnd for rnd in layer_renderers if (rnd isa Voxels.LayerRenderer))
-        return failure_msg
-    end
-
-    # The scene parsed correctly, so kick off its generation.
+    # Everything loaded parsed correctly, so kick off the scene generation.
     if exists(world.next_voxels)
         close(world.next_voxels)
     end
     world.next_voxels = Voxels.Scene(v3i(64, 64, 64), scene_generator,
-                                     v3f(10, 10, 10), layer_renderers)
+                                     layer_names,
+                                     v3f(10, 10, 10))
     return nothing
 end
 
@@ -422,8 +352,7 @@ function render_depth_only(world::World, assets::Assets, mat_viewproj::fmat4)
     set_color_writes(Vec(false, false, false, false))
     set_depth_writes(true)
     set_depth_test(ValueTests.LessThan)
-    Voxels.render_depth_only(world.voxels, assets.prog_voxels_depth_only,
-                             world.cam, mat_viewproj)
+    Voxels.render_depth_only(world.voxels, world.cam, mat_viewproj, world.voxel_materials)
     set_color_writes(Vec(true, true, true, true))
 end
 
@@ -455,7 +384,8 @@ function render(world::World, assets::Assets)
     target_clear(world.g_buffer, @f32 1.0)
 
     # Draw the voxels.
-    Voxels.render(world.voxels, world.cam, mat_cam_viewproj, world.total_seconds)
+    Voxels.render(world.voxels, world.cam, mat_cam_viewproj,
+                  world.total_seconds, world.voxel_materials)
 
     # Calculate an orthogonal view-projection matrix for the sun's shadow-map.
     # Reference: https://www.gamedev.net/forums/topic/505893-orthographic-projection-for-shadow-mapping/

@@ -1,12 +1,12 @@
 //This file contains common code between the two versions of a voxel's shader:
 //    the one before meshing is finished, and the one after meshing is finished.
-//The pre-meshing one uses a slower geometry-shader technique
-//    while waiting for meshing to complete.
+//The pre-meshing one uses a slower geometry-shader technique.
 
 
 //Transforms the voxels from their grid space into world space,
 //    then from there into window-space.
 //No world-space rotation is allowed, to simplify normals calculation.
+//TODO: Expose this data to the fragment shader as well
 uniform vec3 u_world_offset, u_world_scale;
 uniform mat4 u_mat_viewproj;
 

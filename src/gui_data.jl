@@ -116,7 +116,7 @@ Base.@kwdef mutable struct SceneData <:GuiData
             field = 0.2 + (0.5 * perlin(pos * 5.0))
         )
         
-        #layer 2 scifi/scifi-blue.json
+        #layer 2 scifi/blue.json
         box = Box(
             layer = 0x2,
             min = { 0.065, 0.065, 0.065 },
@@ -124,7 +124,7 @@ Base.@kwdef mutable struct SceneData <:GuiData
             mode = edges
         )
         
-        #layer 3 scifi/scifi-red.json
+        #layer 3 scifi/red.json
         sphere = Sphere(
             layer = 0x3,
             center = { {0.25}.xx, 0.75 },

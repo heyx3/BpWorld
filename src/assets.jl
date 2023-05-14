@@ -40,9 +40,7 @@ compile_shader_files(name_without_ext::AbstractString; kw...) = compile_shader_f
 
 mutable struct Assets
     tex_quit_confirmation::Texture
-
     prog_lighting::Program
-    prog_voxels_depth_only::Voxels.LayerDepthRenderer
 end
 function Base.close(a::Assets)
     # Try to close() everything that isnt specifically blacklisted.
@@ -74,8 +72,7 @@ function load_all_shaders()::Tuple
                              insert_above_code = """
                                 #define FRAGMENT_DIR 1
                              """,
-                             flexible_mode = true),
-        Voxels.LayerDepthRenderer()
+                             flexible_mode = true)
     )
 end
 
@@ -167,7 +164,5 @@ end
 
 function reload_shaders(assets::Assets)
     shaders = load_all_shaders()
-    assets.prog_lighting = shaders[1]
-    assets.prog_voxels_depth_only = shaders[2]
-    @assert(length(shaders) == 2, "Something changed")
+    (assets.prog_lighting, ) = shaders
 end
