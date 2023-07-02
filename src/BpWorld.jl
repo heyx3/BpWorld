@@ -22,7 +22,8 @@ include("post_process.jl")
 include("gui.jl")
 
 
-function main()
+function julia_main()::Cint
+try
     bp_gl_context(v2i(1600, 900), "B+ World",
                   vsync=VsyncModes.On,
                   debug_mode=@bpworld_debug(),
@@ -107,7 +108,12 @@ function main()
         close(world)
         close(assets)
     end
-end
+    return 0
+catch e
+    @error exception=(e, catch_backtrace())
+    return 1
+end # try
+end # function
 
 
 end # module
