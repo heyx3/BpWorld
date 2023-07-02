@@ -2,7 +2,7 @@ module Utils
 
 using Setfield, Base.Threads,
       Suppressor, StructTypes, JSON3, CSyntax
-using GLFW, ModernGL, CImGui,
+using GLFW, CImGui,
       ImageIO, FileIO, ColorTypes, FixedPointNumbers, ImageTransformations
 using Bplus,
       Bplus.Utilities, Bplus.Math, Bplus.GL,

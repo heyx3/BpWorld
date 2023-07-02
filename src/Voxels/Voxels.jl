@@ -1,7 +1,7 @@
 module Voxels
     using Setfield, Base.Threads, Dates
     using StructTypes, JSON3,
-          GLFW, ModernGL, CImGui,
+          GLFW, CImGui,
           ImageIO, FileIO, ColorTypes, FixedPointNumbers, ImageTransformations
     using Bplus,
           Bplus.Utilities, Bplus.Math, Bplus.GL,

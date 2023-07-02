@@ -1,7 +1,7 @@
 module BpWorld
 
 using Setfield, Base.Threads, StructTypes, JSON3
-using GLFW, ModernGL, CImGui,
+using GLFW, CImGui,
       ImageIO, FileIO, ColorTypes, FixedPointNumbers, ImageTransformations,
       CSyntax
 
