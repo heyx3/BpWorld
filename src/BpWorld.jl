@@ -32,6 +32,7 @@ function main()
                   )
                  ) do context::Context
         window::GLFW.Window = context.window
+        input_service::InputService = service_input_init(context)
 
         bp_resources::CResources = get_resources()
         assets::Assets = Assets()
@@ -54,6 +55,7 @@ function main()
             window_size::v2i = get_window_size(context)
 
             # Update/render the world.
+            service_input_update(input_service)
             service_gui_start_frame(gui.service)
             gui_begin_debug_region(gui)
             update(world, delta_seconds, window)
@@ -64,7 +66,7 @@ function main()
             service_gui_end_frame(gui.service, context)
 
             # Handle user input.
-            if button_value(world.inputs.reload_shaders)
+            if input_reload_shaders()
                 reload_shaders(assets)
             end
             if is_quit_confirming
@@ -72,12 +74,12 @@ function main()
                                  1)
                 resource_blit(bp_resources, assets.tex_quit_confirmation,
                               quad_transform=m_scale(draw_scale))
-                if button_value(world.inputs.quit_confirm)
+                if input_quit_confirm()
                     break
-                elseif button_value(world.inputs.quit)
+                elseif input_quit()
                     is_quit_confirming = false
                 end
-            elseif !CImGui.IsAnyItemFocused() && button_value(world.inputs.quit)
+            elseif !CImGui.IsAnyItemFocused() && input_quit()
                 is_quit_confirming = true
             end
 
