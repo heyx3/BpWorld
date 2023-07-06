@@ -226,10 +226,10 @@ function render_voxels_depth_only( voxels::Texture, layer_idx::Integer,
         ;
         shape = PrimitiveTypes.point,
         indexed_params = nothing,
-        elements = Box_minsize(
-            UInt32(1),
-            UInt32(prod(voxels.size))
-        )
+        elements = IntervalU((
+            min=1,
+            size=prod(voxels.size)
+        ))
     )
     view_deactivate(voxels)
 end
@@ -275,10 +275,10 @@ function render_voxels( voxels::Texture, layer_idx::Integer,
         ;
         shape = PrimitiveTypes.point,
         indexed_params = nothing,
-        elements = Box_minsize(
-            UInt32(1),
-            UInt32(prod(voxels.size))
-        )
+        elements = IntervalU((
+            min=1,
+            size=prod(voxels.size)
+        ))
     )
     for texture in values(material.textures)
         view_deactivate(get_view(texture))

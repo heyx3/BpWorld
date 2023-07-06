@@ -179,6 +179,7 @@ function World(window::GLFW.Window, assets::Assets)
     # Parse voxel layers.
     (scene_dsl, layers_by_id) = grab_layers(gui_scene.contents)
     scene_dsl_expr = Meta.parseall(scene_dsl)
+    println(Voxels.Generation.eval_dsl(scene_dsl_expr))
     voxel_generator::Voxels.Generation.AbstractVoxelGenerator =
         Voxels.Generation.eval_dsl(scene_dsl_expr)
     voxel_scene = Voxels.Scene(v3i(64, 64, 64), voxel_generator,
@@ -209,7 +210,7 @@ function World(window::GLFW.Window, assets::Assets)
             v3f(30, -30, 670),
             vnorm(v3f(1.0, 1.0, -1.0)),
             get_up_vector(),
-            Box_minmax(@f32(0.05), @f32(1000)),
+            Box((min=@f32(0.05), max=@f32(1000))),
             @f32(100),
             @f32(window_size.x / window_size.y)
         ),
@@ -431,4 +432,8 @@ function on_window_resized(world::World, window::GLFW.Window, new_size::v2i)
             world.target_tex_normals
         ) = new_data
     end
+
+    cam = world.cam
+    @set! cam.aspect_width_over_height = @f32(new_size.x) / @f32(new_size.y)
+    world.cam = cam
 end

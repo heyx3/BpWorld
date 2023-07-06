@@ -45,8 +45,8 @@ function main()
         is_quit_confirming::Bool = false
         frame_idx::UInt = zero(UInt)
 
-        GLFW.SetWindowSizeCallback(window, (wnd, new_x, new_y) -> begin
-            on_window_resized(world, wnd, v2i(new_x, new_y))
+        push!(context.glfw_callbacks_window_resized, new_size::v2i -> begin
+            on_window_resized(world, window, new_size)
         end)
 
         while !GLFW.WindowShouldClose(window)

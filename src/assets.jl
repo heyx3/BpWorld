@@ -143,7 +143,7 @@ function prepare_program_lighting( assets::Assets,
         ("u_fog.heightScale", fog.height_scale),
 
         ("u_camera.pos", cam.pos),
-        ("u_camera.nearClip", cam.clip_range.min),
+        ("u_camera.nearClip", min_inclusive(cam.clip_range)),
         ("u_camera.farClip", max_inclusive(cam.clip_range)),
         ("u_camera.forward", cam.forward),
         ("u_camera.up", cam.up),
