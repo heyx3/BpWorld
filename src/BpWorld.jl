@@ -34,7 +34,7 @@ function main()
         window::GLFW.Window = context.window
         input_service::InputService = service_input_init(context)
 
-        bp_resources::CResources = get_resources()
+        bp_resources::BasicGraphicsService = get_basic_graphics()
         assets::Assets = Assets()
         world::World = World(window, assets)
         view::PostProcess = PostProcess(window, assets, world)

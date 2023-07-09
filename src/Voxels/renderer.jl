@@ -222,7 +222,7 @@ function render_voxels_depth_only( voxels::Texture, layer_idx::Integer,
     #    is less painful than the mental complication of attempting to optimize that away.
     view_activate(voxels)
     render_mesh(
-        get_resources().empty_mesh, prog
+        get_basic_graphics().empty_mesh, prog
         ;
         shape = PrimitiveTypes.point,
         indexed_params = nothing,
@@ -271,7 +271,7 @@ function render_voxels( voxels::Texture, layer_idx::Integer,
     end
     view_activate(voxels)
     render_mesh(
-        get_resources().empty_mesh, prog
+        get_basic_graphics().empty_mesh, prog
         ;
         shape = PrimitiveTypes.point,
         indexed_params = nothing,
