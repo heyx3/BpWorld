@@ -24,7 +24,7 @@ include("gui.jl")
 
 function main()
     bp_gl_context(v2i(1600, 900), "B+ World",
-                  vsync=VsyncModes.On,
+                  vsync=VsyncModes.on,
                   debug_mode=@bpworld_debug(),
                   glfw_hints = Dict{Int32, Int32}(
                       Int32(GLFW.DEPTH_BITS) => Int32(GLFW.DONT_CARE),

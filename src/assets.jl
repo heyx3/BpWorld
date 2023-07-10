@@ -155,9 +155,9 @@ function prepare_program_lighting( assets::Assets,
         set_uniform(assets.prog_lighting, uniforms...)
     end
 
-    set_culling(FaceCullModes.Off)
+    set_culling(FaceCullModes.off)
     set_depth_writes(false)
-    set_depth_test(ValueTests.Pass)
+    set_depth_test(ValueTests.pass)
     set_blending(make_blend_opaque(BlendStateRGBA))
     set_scissor(nothing)
 end

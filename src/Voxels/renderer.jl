@@ -43,7 +43,7 @@ function LayerMaterial(data::LayerData)::LayerMaterial
                                 String)
 
     # If an exception is thrown, everything up to that point needs to be cleaned up.
-    resources = Resource[ ]
+    resources = AbstractResource[ ]
     try
         # Vertex/geometry shaders depend on whether the layer is meshed yet.
         vert_preview = """
@@ -169,10 +169,10 @@ function prepare_voxel_render( prog::Program,
                              )
     # Set render state.
     set_depth_writes(true)
-    set_depth_test(ValueTests.LessThan)
+    set_depth_test(ValueTests.less_than)
     # Disable culling until I can make sure all triangles are oriented correctly.
     #TODO: Figure out voxel triangle orientation.
-    set_culling(FaceCullModes.Off)
+    set_culling(FaceCullModes.off)
 
     set_uniform(prog, "u_world_offset", offset)
     set_uniform(prog, "u_world_scale", scale)

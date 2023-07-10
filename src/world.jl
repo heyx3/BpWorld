@@ -156,7 +156,7 @@ function set_up_sun_shadowmap(size::v2i)::Tuple
                     wrapping = WrapModes.clamp,
                     pixel_filter = PixelFilters.smooth,
                     mip_filter = PixelFilters.smooth,
-                    depth_comparison_mode = ValueTests.LessThanOrEqual
+                    depth_comparison_mode = ValueTests.less_than_or_equal
                 ))
     )
     return tuple(
@@ -179,7 +179,6 @@ function World(window::GLFW.Window, assets::Assets)
     # Parse voxel layers.
     (scene_dsl, layers_by_id) = grab_layers(gui_scene.contents)
     scene_dsl_expr = Meta.parseall(scene_dsl)
-    println(Voxels.Generation.eval_dsl(scene_dsl_expr))
     voxel_generator::Voxels.Generation.AbstractVoxelGenerator =
         Voxels.Generation.eval_dsl(scene_dsl_expr)
     voxel_scene = Voxels.Scene(v3i(64, 64, 64), voxel_generator,
@@ -327,7 +326,7 @@ end
 function render_depth_only(world::World, assets::Assets, mat_viewproj::fmat4)
     set_color_writes(Vec(false, false, false, false))
     set_depth_writes(true)
-    set_depth_test(ValueTests.LessThan)
+    set_depth_test(ValueTests.less_than)
     Voxels.render_depth_only(world.voxels, world.cam, mat_viewproj, world.voxel_materials)
     set_color_writes(Vec(true, true, true, true))
 end
@@ -348,8 +347,8 @@ function render(world::World, assets::Assets)
     set_depth_writes(context, true) # Needed to clear the depth buffer
     set_color_writes(context, vRGBA{Bool}(true, true, true, true))
     set_blending(context, make_blend_opaque(BlendStateRGBA))
-    set_culling(context, FaceCullModes.Off)
-    set_depth_test(context, ValueTests.LessThan)
+    set_culling(context, FaceCullModes.off)
+    set_depth_test(context, ValueTests.less_than)
     set_scissor(context, nothing)
 
     # Clear the G-buffer.
