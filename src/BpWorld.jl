@@ -72,8 +72,8 @@ function main()
             if is_quit_confirming
                 draw_scale = v3f((assets.tex_quit_confirmation.size.xy / get_window_size())...,
                                  1)
-                resource_blit(bp_resources, assets.tex_quit_confirmation,
-                              quad_transform=m_scale(draw_scale))
+                simple_blit(bp_resources, assets.tex_quit_confirmation,
+                            quad_transform=m_scale(draw_scale))
                 if input_quit_confirm()
                     break
                 elseif input_quit()
