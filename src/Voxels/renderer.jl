@@ -153,7 +153,7 @@ end
 ##   Layer rendering   ##
 #########################
 
-const DEFAULT_SAMPLER = Sampler{2}(
+const DEFAULT_SAMPLER = TexSampler{2}(
     wrapping = WrapModes.repeat,
     pixel_filter = PixelFilters.smooth,
     mip_filter = PixelFilters.smooth

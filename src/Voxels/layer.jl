@@ -10,14 +10,14 @@ struct LayerTexture
 
     # The default sampler is good for typical 3D meshes:
     #    repeat, linear filtering, mipmaps, and anisotropy based on graphics settings.
-    sampler::Optional{Sampler{2}}
+    sampler::Optional{TexSampler{2}}
 
     channels::E_SimpleFormatComponents
     use_mips::Bool
 
     LayerTexture(code_name::String
                  ;
-                 sampler::Optional{Sampler{2}} = nothing,
+                 sampler::Optional{TexSampler{2}} = nothing,
                  channels::E_SimpleFormatComponents = SimpleFormatComponents.RGBA,
                  use_mips::Bool = true
                 ) = new(code_name, sampler, channels, use_mips)

@@ -90,7 +90,7 @@ end
 ###################
 
 "The type of sampling used for G-buffer textures in full-screen passes."
-const G_BUFFER_SAMPLER = Sampler{2}(
+const G_BUFFER_SAMPLER = TexSampler{2}(
     wrapping = WrapModes.clamp,
     pixel_filter = PixelFilters.rough,
     mip_filter = nothing

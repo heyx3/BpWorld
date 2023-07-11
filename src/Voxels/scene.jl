@@ -59,7 +59,7 @@ function Scene(grid_size::v3i,
             grid
             ;
             n_mips = 1,
-            sampler = Sampler{3}(
+            sampler = TexSampler{3}(
                 wrapping = WrapModes.clamp,
                 pixel_filter = PixelFilters.rough,
                 mip_filter = nothing

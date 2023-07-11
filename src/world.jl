@@ -152,7 +152,7 @@ end
 function set_up_sun_shadowmap(size::v2i)::Tuple
     textures = tuple(
         Texture(DepthStencilFormats.depth_32u, size,
-                sampler = Sampler{2}(
+                sampler = TexSampler{2}(
                     wrapping = WrapModes.clamp,
                     pixel_filter = PixelFilters.smooth,
                     mip_filter = PixelFilters.smooth,
@@ -209,7 +209,7 @@ function World(window::GLFW.Window, assets::Assets)
             v3f(30, -30, 670),
             vnorm(v3f(1.0, 1.0, -1.0)),
             get_up_vector(),
-            Box((min=@f32(0.05), max=@f32(1000))),
+            IntervalF(min=0.05, max=1000),
             @f32(100),
             @f32(window_size.x / window_size.y)
         ),
