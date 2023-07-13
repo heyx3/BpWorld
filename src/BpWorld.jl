@@ -5,9 +5,7 @@ using GLFW, ModernGLbp, CImGui,
       ImageIO, FileIO, ColorTypes, FixedPointNumbers, ImageTransformations,
       CSyntax
 
-using Bplus,
-      Bplus.Utilities, Bplus.Math, Bplus.GL,
-      Bplus.Helpers, Bplus.SceneTree, Bplus.Input, Bplus.GUI
+@using_bplus
 
 include("Utils/Utils.jl")
 using .Utils
