@@ -1,10 +1,12 @@
 module BpWorld
 
 using Setfield, Base.Threads, StructTypes, JSON3
+
 using GLFW, ModernGLbp, CImGui,
       ImageIO, FileIO, ColorTypes, FixedPointNumbers, ImageTransformations,
       CSyntax
 
+using Bplus
 @using_bplus
 
 include("Utils/Utils.jl")
@@ -46,6 +48,9 @@ function main()
 
         LOOP = begin
             check_gl_logs("Top of loop")
+            if GLFW.WindowShouldClose(LOOP.context.window)
+                break
+            end
             window_size::v2i = get_window_size(LOOP.context)
 
             gui_begin_debug_region(gui)
@@ -62,7 +67,7 @@ function main()
             if is_quit_confirming
                 draw_scale = v3f((assets.tex_quit_confirmation.size.xy / window_size)...,
                                  1)
-                simple_blit(bp_resources, assets.tex_quit_confirmation,
+                simple_blit(LOOP.service_basic_graphics, assets.tex_quit_confirmation,
                             quad_transform=m_scale(draw_scale))
                 if input_quit_confirm()
                     break
