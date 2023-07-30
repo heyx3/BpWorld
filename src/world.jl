@@ -235,8 +235,8 @@ function update(world::World, delta_seconds::Float32, window::GLFW.Window)
     world.total_seconds += delta_seconds
 
     # Update inputs.
-    if !CImGui.Get_WantCaptureKeyboard(CImGui.GetIO()) &&
-       (!world.is_mouse_captured || !CImGui.Get_WantCaptureMouse(CImGui.GetIO()))
+    if !unsafe_load(CImGui.GetIO().WantCaptureKeyboard) &&
+       (!world.is_mouse_captured || !unsafe_load(CImGui.GetIO().WantCaptureMouse))
     #begin
         if input_capture_mouse()
             world.is_mouse_captured = !world.is_mouse_captured

@@ -71,7 +71,7 @@ end
                   vdot(map(sin, Vec(1.0, 2.0, 4.0)) *
                          Vec(3, -4, 10),
                        vappend(-1, 2.5, -3)),
-                  (sin({ 1.0, 2.0, 4.0 }) * { 3, -4, 10 }) ∘ { -1, 2.5, -3 })
+                  (sin({ 1.0, 2.0, 4.0 }) * { 3, -4, 10 }) ⋅ { -1, 2.5, -3 })
 
         @test_dsl("Boolean expressions",
                   Vec((true & false) ⊻ true,
@@ -173,7 +173,7 @@ end
             @test length(g.layers) == 1
             @test g.layers[1][1] == 0x5
             @test g.layers[1][2] isa
-                    Bplus.Fields.SwizzleField{3, 1, Float32, Tuple{1},
+                    Bplus.Fields.SwizzleField{3, 1, Float32, :x,
                                               Bplus.Fields.PosField{3, Float32}}
         end
         test_generator(:( Sphere(center={1, 2, 3}, radius=5.7, layer=0x4) ), "Basic sphere") do g
