@@ -90,7 +90,7 @@ end
 ###################
 
 "The type of sampling used for G-buffer textures in full-screen passes."
-const G_BUFFER_SAMPLER = Sampler{2}(
+const G_BUFFER_SAMPLER = TexSampler{2}(
     wrapping = WrapModes.clamp,
     pixel_filter = PixelFilters.rough,
     mip_filter = nothing
@@ -143,7 +143,7 @@ function prepare_program_lighting( assets::Assets,
         ("u_fog.heightScale", fog.height_scale),
 
         ("u_camera.pos", cam.pos),
-        ("u_camera.nearClip", cam.clip_range.min),
+        ("u_camera.nearClip", min_inclusive(cam.clip_range)),
         ("u_camera.farClip", max_inclusive(cam.clip_range)),
         ("u_camera.forward", cam.forward),
         ("u_camera.up", cam.up),
@@ -155,9 +155,9 @@ function prepare_program_lighting( assets::Assets,
         set_uniform(assets.prog_lighting, uniforms...)
     end
 
-    set_culling(FaceCullModes.Off)
+    set_culling(FaceCullModes.off)
     set_depth_writes(false)
-    set_depth_test(ValueTests.Pass)
+    set_depth_test(ValueTests.pass)
     set_blending(make_blend_opaque(BlendStateRGBA))
     set_scissor(nothing)
 end

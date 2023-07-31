@@ -1,60 +1,45 @@
-#####################
-#   Custom Inputs   #
-#####################
-
-#TODO: Add these to B+ proper
-
-@bp_axis raw MouseMovement begin
-    axis::Int # 1=X, 2=Y
-    last_pos::Float32 = zero(Float32)
-    current_pos::Float32 = zero(Float32)
-    RAW(b, wnd) = (b.current_pos - b.last_pos)
-    UPDATE(b, wnd) = let pos = GLFW.GetCursorPos(wnd)
-        b.last_pos = b.current_pos
-        b.current_pos = getproperty(pos, (:x, :y)[b.axis])
-    end
-end
-
-function mouse_wheel_changed(axis_mouseWheel, window::GLFW.Window,
-                             delta_x::Float64, delta_y::Float64)
-    axis_mouseWheel.current_raw -= @f32(delta_y)
-end
-@bp_axis raw MouseWheel begin
-    #TODO: Choose which wheel axis
-    MouseWheel(window::GLFW.Window; kw...) = begin
-        me = MouseWheel(; kw...)
-        GLFW.SetScrollCallback(window, (wnd, dX, dY) -> mouse_wheel_changed(me, wnd, dX, dY))
-        return me
-    end
-    RAW(b) = b.current_raw # Separate callback will update the value
-end
-#TODO: Add a centralized place in B+ to track current mouse wheel value (e.x. global dict of Context to current wheel pos)
-
-
 ####################
 #   World Inputs   #
 ####################
 
-Base.@kwdef mutable struct SceneInputs
-    cam_pitch::AbstractAxis = Axis_MouseMovement(2, scale=-0.05)
-    cam_yaw::AbstractAxis = Axis_MouseMovement(1, scale=0.05)
-    cam_forward::AbstractAxis = Axis_Key2(GLFW.KEY_W, GLFW.KEY_S)
-    cam_rightward::AbstractAxis = Axis_Key2(GLFW.KEY_D, GLFW.KEY_A)
-    cam_upward::AbstractAxis = Axis_Key2(GLFW.KEY_E, GLFW.KEY_Q)
-    cam_sprint::AbstractButton = Button_Key(GLFW.KEY_LEFT_SHIFT)
-    cam_speed_change::AbstractAxis # Set in the constructor to the mouse wheel
+"Configures this game's inputs within the already-created `InputService``."
+function configure_inputs()
+    # Buttons:
+    create_button("cam_sprint",
+                  ButtonInput(GLFW.KEY_LEFT_SHIFT))
+    create_button("capture_mouse",
+                  ButtonInput(GLFW.KEY_SPACE, ButtonModes.just_pressed))
+    create_button("quit",
+                  ButtonInput(GLFW.KEY_ESCAPE, ButtonModes.just_pressed))
+    create_button("quit_confirm",
+                  ButtonInput(GLFW.KEY_ENTER, ButtonModes.just_pressed))
+    create_button("reload_shaders",
+                  ButtonInput(GLFW.KEY_P, ButtonModes.just_pressed))
 
-    capture_mouse::AbstractButton = Button_Key(GLFW.KEY_SPACE, mode=ButtonModes.just_pressed)
-    quit::AbstractButton = Button_Key(GLFW.KEY_ESCAPE, mode=ButtonModes.just_pressed)
-    quit_confirm::AbstractButton = Button_Key(GLFW.KEY_ENTER, mode=ButtonModes.just_released)
-
-    reload_shaders::AbstractButton = Button_Key(GLFW.KEY_P, mode=ButtonModes.just_pressed)
+    # Axes:
+    create_axis("cam_pitch",
+                AxisInput(MouseAxes.y, AxisModes.delta; value_scale=-0.05))
+    create_axis("cam_yaw",
+                AxisInput(MouseAxes.x, AxisModes.delta; value_scale=0.05))
+    create_axis("cam_forward",
+                AxisInput([ ButtonAsAxis(GLFW.KEY_W), ButtonAsAxis_Negative(GLFW.KEY_S) ]))
+    create_axis("cam_rightward",
+                AxisInput([ ButtonAsAxis(GLFW.KEY_D), ButtonAsAxis_Negative(GLFW.KEY_A) ]))
+    create_axis("cam_upward",
+                AxisInput([ ButtonAsAxis(GLFW.KEY_E), ButtonAsAxis_Negative(GLFW.KEY_Q) ]))
+    create_axis("cam_speed_change",
+                AxisInput(MouseAxes.scroll_y, AxisModes.delta; value_scale=-1))
 end
-SceneInputs(window::GLFW.Window; kw...) = SceneInputs(
-    cam_speed_change=Axis_MouseWheel(window; scale=-1)
-    ;
-    kw...
-)
+
+# Short-hand for each input:
+input_cam_turn() = v2f(get_axis("cam_yaw"), get_axis("cam_pitch"))
+input_cam_move() = v3f(get_axis("cam_rightward"), get_axis("cam_forward"), get_axis("cam_upward"))
+input_cam_sprint() = get_button("cam_sprint")
+input_cam_speed_change() = get_axis("cam_speed_change")
+input_capture_mouse() = get_button("capture_mouse")
+input_quit() = get_button("quit")
+input_quit_confirm() = get_button("quit_confirm")
+input_reload_shaders() = get_button("reload_shaders")
 
 
 ####################
@@ -109,7 +94,6 @@ mutable struct World
     cam::Cam3D
     cam_settings::Cam3D_Settings
     is_mouse_captured::Bool
-    inputs::SceneInputs
     total_seconds::Float32
 
     g_buffer::Target
@@ -168,11 +152,11 @@ end
 function set_up_sun_shadowmap(size::v2i)::Tuple
     textures = tuple(
         Texture(DepthStencilFormats.depth_32u, size,
-                sampler = Sampler{2}(
+                sampler = TexSampler{2}(
                     wrapping = WrapModes.clamp,
                     pixel_filter = PixelFilters.smooth,
                     mip_filter = PixelFilters.smooth,
-                    depth_comparison_mode = ValueTests.LessThanOrEqual
+                    depth_comparison_mode = ValueTests.less_than_or_equal
                 ))
     )
     return tuple(
@@ -188,6 +172,8 @@ function World(window::GLFW.Window, assets::Assets)
     gui_sun = SunData()
     gui_fog = FogData()
     gui_scene = SceneData()
+
+    configure_inputs()
 
     # Generate some voxel data.
     # Parse voxel layers.
@@ -223,7 +209,7 @@ function World(window::GLFW.Window, assets::Assets)
             v3f(30, -30, 670),
             vnorm(v3f(1.0, 1.0, -1.0)),
             get_up_vector(),
-            Box_minmax(@f32(0.05), @f32(1000)),
+            IntervalF(min=0.05, max=1000),
             @f32(100),
             @f32(window_size.x / window_size.y)
         ),
@@ -232,7 +218,7 @@ function World(window::GLFW.Window, assets::Assets)
             move_speed_min = @f32(5),
             move_speed_max = @f32(100)
         ),
-        false, SceneInputs(window), @f32(0.0),
+        false, @f32(0.0),
 
         g_buffer_data...
     )
@@ -249,20 +235,10 @@ function update(world::World, delta_seconds::Float32, window::GLFW.Window)
     world.total_seconds += delta_seconds
 
     # Update inputs.
-    if !CImGui.Get_WantCaptureKeyboard(CImGui.GetIO()) &&
-       (!world.is_mouse_captured || !CImGui.Get_WantCaptureMouse(CImGui.GetIO()))
+    if !unsafe_load(CImGui.GetIO().WantCaptureKeyboard) &&
+       (!world.is_mouse_captured || !unsafe_load(CImGui.GetIO().WantCaptureMouse))
     #begin
-        for input_names in fieldnames(typeof(world.inputs))
-            field_val = getfield(world.inputs, input_names)
-            if field_val isa AbstractButton
-                Bplus.Input.button_update(field_val, window)
-            elseif field_val isa AbstractAxis
-                Bplus.Input.axis_update(field_val, window)
-            else
-                error("Unhandled case: ", typeof(field_val))
-            end
-        end
-        if button_value(world.inputs.capture_mouse)
+        if input_capture_mouse()
             world.is_mouse_captured = !world.is_mouse_captured
             GLFW.SetInputMode(
                 window, GLFW.CURSOR,
@@ -272,15 +248,14 @@ function update(world::World, delta_seconds::Float32, window::GLFW.Window)
     end
 
     # Update the camera.
+    cam_turn = input_cam_turn()
+    cam_move = input_cam_move()
     cam_input = Cam3D_Input(
         world.is_mouse_captured,
-        axis_value(world.inputs.cam_yaw),
-        axis_value(world.inputs.cam_pitch),
-        button_value(world.inputs.cam_sprint),
-        axis_value(world.inputs.cam_forward),
-        axis_value(world.inputs.cam_rightward),
-        axis_value(world.inputs.cam_upward),
-        axis_value(world.inputs.cam_speed_change)
+        cam_turn...,
+        input_cam_sprint(),
+        cam_move.y, cam_move.x, cam_move.z,
+        input_cam_speed_change()
     )
     (world.cam, world.cam_settings) = cam_update(world.cam, world.cam_settings, cam_input, delta_seconds)
 
@@ -351,7 +326,7 @@ end
 function render_depth_only(world::World, assets::Assets, mat_viewproj::fmat4)
     set_color_writes(Vec(false, false, false, false))
     set_depth_writes(true)
-    set_depth_test(ValueTests.LessThan)
+    set_depth_test(ValueTests.less_than)
     Voxels.render_depth_only(world.voxels, world.cam, mat_viewproj, world.voxel_materials)
     set_color_writes(Vec(true, true, true, true))
 end
@@ -372,8 +347,8 @@ function render(world::World, assets::Assets)
     set_depth_writes(context, true) # Needed to clear the depth buffer
     set_color_writes(context, vRGBA{Bool}(true, true, true, true))
     set_blending(context, make_blend_opaque(BlendStateRGBA))
-    set_culling(context, FaceCullModes.Off)
-    set_depth_test(context, ValueTests.LessThan)
+    set_culling(context, FaceCullModes.off)
+    set_depth_test(context, ValueTests.less_than)
     set_scissor(context, nothing)
 
     # Clear the G-buffer.
@@ -456,4 +431,8 @@ function on_window_resized(world::World, window::GLFW.Window, new_size::v2i)
             world.target_tex_normals
         ) = new_data
     end
+
+    cam = world.cam
+    @set! cam.aspect_width_over_height = @f32(new_size.x) / @f32(new_size.y)
+    world.cam = cam
 end

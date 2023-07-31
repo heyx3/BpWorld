@@ -418,7 +418,7 @@ end
 
 
 # Generate basic vector expressions.
-for vector_func in [ :vdot, :vcross, :⋅, :×, :∘,
+for vector_func in [ :vdot, :vcross, :⋅, :×,
                      :vlength, :vlength_sqr,
                      :vdist, :vdist_sqr,
                      :vnorm

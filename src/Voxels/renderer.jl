@@ -43,7 +43,7 @@ function LayerMaterial(data::LayerData)::LayerMaterial
                                 String)
 
     # If an exception is thrown, everything up to that point needs to be cleaned up.
-    resources = Resource[ ]
+    resources = AbstractResource[ ]
     try
         # Vertex/geometry shaders depend on whether the layer is meshed yet.
         vert_preview = """
@@ -153,7 +153,7 @@ end
 ##   Layer rendering   ##
 #########################
 
-const DEFAULT_SAMPLER = Sampler{2}(
+const DEFAULT_SAMPLER = TexSampler{2}(
     wrapping = WrapModes.repeat,
     pixel_filter = PixelFilters.smooth,
     mip_filter = PixelFilters.smooth
@@ -169,10 +169,10 @@ function prepare_voxel_render( prog::Program,
                              )
     # Set render state.
     set_depth_writes(true)
-    set_depth_test(ValueTests.LessThan)
+    set_depth_test(ValueTests.less_than)
     # Disable culling until I can make sure all triangles are oriented correctly.
     #TODO: Figure out voxel triangle orientation.
-    set_culling(FaceCullModes.Off)
+    set_culling(FaceCullModes.off)
 
     set_uniform(prog, "u_world_offset", offset)
     set_uniform(prog, "u_world_scale", scale)
@@ -222,14 +222,14 @@ function render_voxels_depth_only( voxels::Texture, layer_idx::Integer,
     #    is less painful than the mental complication of attempting to optimize that away.
     view_activate(voxels)
     render_mesh(
-        get_resources().empty_mesh, prog
+        get_basic_graphics().empty_mesh, prog
         ;
         shape = PrimitiveTypes.point,
         indexed_params = nothing,
-        elements = Box_minsize(
-            UInt32(1),
-            UInt32(prod(voxels.size))
-        )
+        elements = IntervalU((
+            min=1,
+            size=prod(voxels.size)
+        ))
     )
     view_deactivate(voxels)
 end
@@ -271,14 +271,14 @@ function render_voxels( voxels::Texture, layer_idx::Integer,
     end
     view_activate(voxels)
     render_mesh(
-        get_resources().empty_mesh, prog
+        get_basic_graphics().empty_mesh, prog
         ;
         shape = PrimitiveTypes.point,
         indexed_params = nothing,
-        elements = Box_minsize(
-            UInt32(1),
-            UInt32(prod(voxels.size))
-        )
+        elements = IntervalU((
+            min=1,
+            size=prod(voxels.size)
+        ))
     )
     for texture in values(material.textures)
         view_deactivate(get_view(texture))

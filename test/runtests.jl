@@ -71,7 +71,7 @@ end
                   vdot(map(sin, Vec(1.0, 2.0, 4.0)) *
                          Vec(3, -4, 10),
                        vappend(-1, 2.5, -3)),
-                  (sin({ 1.0, 2.0, 4.0 }) * { 3, -4, 10 }) ∘ { -1, 2.5, -3 })
+                  (sin({ 1.0, 2.0, 4.0 }) * { 3, -4, 10 }) ⋅ { -1, 2.5, -3 })
 
         @test_dsl("Boolean expressions",
                   Vec((true & false) ⊻ true,
@@ -89,7 +89,7 @@ end
                               layer=0x7f)))
         @test_dsl("copy() a generator with no changes 2",
                   VoxelBox(BoxModes.edges,
-                           area=Box_minmax(v3f(1, 2, 3), v3f(4, 6, 8)),
+                           area=Box((min=v3f(1, 2, 3), max=v3f(4, 6, 8))),
                            layer=0xb0),
                   copy(Box(layer=0xb0,
                            min={1, 2, 3},
@@ -97,7 +97,7 @@ end
                            mode=edges)))
         @test_dsl("copy() a nested generator with no changes",
                   VoxelUnion([ VoxelBox(BoxModes.filled,
-                                        area=Box_minmax(v3f(1, 2, 3), v3f(4, 6, 8)),
+                                        area=Box((min=v3f(1, 2, 3), max=v3f(4, 6, 8))),
                                         layer=0xb0),
                                VoxelSphere(center=v3f(2, 3, 4),
                                            radius=3,
@@ -130,7 +130,7 @@ end
                        layer += 0x0a))
         @test_dsl("copy() box's special properties (min)",
                   VoxelBox(
-                      area=Box_minmax(v3f(3, 3, 3), v3f(13, 15, 17)),
+                      area=Box((min=v3f(3, 3, 3), max=v3f(13, 15, 17))),
                       layer = 0xbe,
                       invert = false
                   ),
@@ -143,7 +143,7 @@ end
         @test_dsl("copy() box's special properties (max, mode)",
                   VoxelBox(
                       BoxModes.corners,
-                      area=Box_minmax(v3f(10, 11, 12), v3f(3, 3, 3)),
+                      area=Box((min=v3f(10, 11, 12), max=v3f(3, 3, 3))),
                       layer = 0x0
                   ),
                   copy(Box(min={10, 11, 12}, size={13, 15, 17}, layer=0),
@@ -151,7 +151,7 @@ end
                        mode=corners))
         @test_dsl("copy() box's special properties (center, size)",
                   VoxelBox(
-                      area=Box_centersize(v3f(-4, -5, -100), v3f(13, 15, 17)),
+                      area=Box((center=v3f(-4, -5, -100), size=v3f(13, 15, 17))),
                       layer = 0x0
                   ),
                   copy(Box(min={10, 11, 12}, max={13, 15, 17}, layer=0),
@@ -173,7 +173,7 @@ end
             @test length(g.layers) == 1
             @test g.layers[1][1] == 0x5
             @test g.layers[1][2] isa
-                    Bplus.Fields.SwizzleField{3, 1, Float32, Tuple{1},
+                    Bplus.Fields.SwizzleField{3, 1, Float32, :x,
                                               Bplus.Fields.PosField{3, Float32}}
         end
         test_generator(:( Sphere(center={1, 2, 3}, radius=5.7, layer=0x4) ), "Basic sphere") do g
@@ -192,21 +192,21 @@ end
         end
         test_generator(:( Box(layer=0x00, min={4, 5, 6}, max={7, 8, 9}) ), "Min/max box") do g
             @test g.layer === 0x00
-            @test g.area === Box_minmax(v3f(4, 5, 6), v3f(7, 8, 9))
+            @test g.area === Box((min=v3f(4, 5, 6), max=v3f(7, 8, 9)))
             @test !g.invert
             @test BpWorld.Voxels.Generation.box_mode(g) ==
                       BpWorld.Voxels.Generation.BoxModes.filled
         end
         test_generator(:( Box(layer=0xAB, min={4.5, 3.7, 20}, size={99, 98, 97}) ), "Min/size box") do g
             @test g.layer === 0xAB
-            @test g.area === Box_minsize(v3f(4.5, 3.7, 20), v3f(99, 98, 97))
+            @test g.area === Box((min=v3f(4.5, 3.7, 20), size=v3f(99, 98, 97)))
             @test !g.invert
             @test BpWorld.Voxels.Generation.box_mode(g) ==
                       BpWorld.Voxels.Generation.BoxModes.filled
         end
         test_generator(:( Box(layer=0x43, max={4.5, 3.7, 20}, size={99, 98, 97}, invert=(true|false), mode=edges) ), "Inverted max/size box") do g
             @test g.layer === 0x43
-            @test g.area === Box_maxsize(v3f(4.5, 3.7, 20), v3f(99, 98, 97))
+            @test g.area === Box((max=v3f(4.5, 3.7, 20), size=v3f(99, 98, 97)))
             @test g.invert
             @test BpWorld.Voxels.Generation.box_mode(g) ==
                       BpWorld.Voxels.Generation.BoxModes.edges
@@ -219,7 +219,7 @@ end
             @test length(g.inputs) == 2
             @test g.inputs[1] isa VoxelBox
             @test g.inputs[1].layer == 0x02
-            @test g.inputs[1].area == Box_minmax(v3f(4, 5, 6), v3f(5, 7, 9))
+            @test g.inputs[1].area == Box((min=v3f(4, 5, 6), max=v3f(5, 7, 9)))
             @test !g.inputs[1].invert
             @test BpWorld.Voxels.Generation.box_mode(g.inputs[1]) ==
                       BpWorld.Voxels.Generation.BoxModes.filled
@@ -237,7 +237,7 @@ end
             @test length(g.inputs) == 2
             @test g.inputs[1] isa VoxelBox
             @test g.inputs[1].layer == 0x02
-            @test g.inputs[1].area == Box_maxsize(v3f(5, 7, 9), v3f(4, 5, 6))
+            @test g.inputs[1].area == Box((max=v3f(5, 7, 9), size=v3f(4, 5, 6)))
             @test !g.inputs[1].invert
             @test BpWorld.Voxels.Generation.box_mode(g.inputs[1]) ==
                       BpWorld.Voxels.Generation.BoxModes.filled
@@ -254,7 +254,7 @@ end
             @test g isa VoxelDifference
             @test g.main isa VoxelBox
             @test g.main.layer == 0x02
-            @test g.main.area == Box_minmax(v3f(4, 5, 6), v3f(5, 7, 9))
+            @test g.main.area == Box((min=v3f(4, 5, 6), max=v3f(5, 7, 9)))
             @test !g.main.invert
             @test BpWorld.Voxels.Generation.box_mode(g.main) ==
                       BpWorld.Voxels.Generation.BoxModes.filled
@@ -272,7 +272,7 @@ end
             @test g isa VoxelDifference
             @test g.main isa VoxelBox
             @test g.main.layer == 0x02
-            @test g.main.area == Box_minmax(v3f(4, 5, 6), v3f(5, 7, 9))
+            @test g.main.area == Box((min=v3f(4, 5, 6), max=v3f(5, 7, 9)))
             @test !g.main.invert
             @test BpWorld.Voxels.Generation.box_mode(g.main) ==
                       BpWorld.Voxels.Generation.BoxModes.filled

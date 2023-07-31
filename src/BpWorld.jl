@@ -1,13 +1,13 @@
 module BpWorld
 
 using Setfield, Base.Threads, StructTypes, JSON3
-using GLFW, ModernGL, CImGui,
+
+using GLFW, ModernGLbp, CImGui,
       ImageIO, FileIO, ColorTypes, FixedPointNumbers, ImageTransformations,
       CSyntax
 
-using Bplus,
-      Bplus.Utilities, Bplus.Math, Bplus.GL,
-      Bplus.Helpers, Bplus.SceneTree, Bplus.Input, Bplus.GUI
+using Bplus
+@using_bplus
 
 include("Utils/Utils.jl")
 using .Utils
@@ -21,92 +21,75 @@ include("world.jl")
 include("post_process.jl")
 include("gui.jl")
 
-
 function julia_main()::Cint
 try
-    bp_gl_context(v2i(1600, 900), "B+ World",
-                  vsync=VsyncModes.On,
-                  debug_mode=@bpworld_debug(),
-                  glfw_hints = Dict{Int32, Int32}(
-                      Int32(GLFW.DEPTH_BITS) => Int32(GLFW.DONT_CARE),
-                      Int32(GLFW.STENCIL_BITS) => Int32(GLFW.DONT_CARE)
-                  )
-                 ) do context::Context
-        window::GLFW.Window = context.window
+    @game_loop begin
+        INIT(
+            v2i(1600, 900), "B+ World",
+            vsync=VsyncModes.on,
+            debug_mode=@bpworld_debug(),
+            glfw_hints = Dict{Int32, Int32}(
+                Int32(GLFW.DEPTH_BITS) => Int32(GLFW.DONT_CARE),
+                Int32(GLFW.STENCIL_BITS) => Int32(GLFW.DONT_CARE)
+            )
+        )
 
-        bp_resources::CResources = get_resources()
-        assets::Assets = Assets()
-        world::World = World(window, assets)
-        view::PostProcess = PostProcess(window, assets, world)
-        gui::GUI = GUI(context, assets, world, view)
+        SETUP = begin
+            assets::Assets = Assets()
+            world::World = World(LOOP.context.window, assets)
+            view::PostProcess = PostProcess(LOOP.context.window, assets, world)
+            gui::GUI = GUI(LOOP.context, assets, world, view)
 
-        last_time_ns = time_ns()
-        delta_seconds::Float32 = zero(Float32)
-        is_quit_confirming::Bool = false
-        frame_idx::UInt = zero(UInt)
+            is_quit_confirming::Bool = false
 
-        GLFW.SetWindowSizeCallback(window, (wnd, new_x, new_y) -> begin
-            on_window_resized(world, wnd, v2i(new_x, new_y))
-        end)
+            push!(LOOP.context.glfw_callbacks_window_resized, new_size::v2i -> begin
+                on_window_resized(world, LOOP.context.window, new_size)
+            end)
+        end
 
-        while !GLFW.WindowShouldClose(window)
+        LOOP = begin
             check_gl_logs("Top of loop")
-            GLFW.PollEvents()
-            window_size::v2i = get_window_size(context)
+            if GLFW.WindowShouldClose(LOOP.context.window)
+                break
+            end
+            window_size::v2i = get_window_size(LOOP.context)
 
-            # Update/render the world.
-            service_gui_start_frame(gui.service)
             gui_begin_debug_region(gui)
-            update(world, delta_seconds, window)
+            update(world, LOOP.delta_seconds, LOOP.context.window)
             render(world, assets)
-            render(view, window, assets, world)
+            render(view, LOOP.context.window, assets, world)
             gui_end_debug_region(gui)
             gui_main_region(gui, assets, world, view)
-            service_gui_end_frame(gui.service, context)
 
             # Handle user input.
-            if button_value(world.inputs.reload_shaders)
+            if input_reload_shaders()
                 reload_shaders(assets)
             end
             if is_quit_confirming
-                draw_scale = v3f((assets.tex_quit_confirmation.size.xy / get_window_size())...,
+                draw_scale = v3f((assets.tex_quit_confirmation.size.xy / window_size)...,
                                  1)
-                resource_blit(bp_resources, assets.tex_quit_confirmation,
-                              quad_transform=m_scale(draw_scale))
-                if button_value(world.inputs.quit_confirm)
+                simple_blit(LOOP.service_basic_graphics, assets.tex_quit_confirmation,
+                            quad_transform=m_scale(draw_scale))
+                if input_quit_confirm()
                     break
-                elseif button_value(world.inputs.quit)
+                elseif input_quit()
                     is_quit_confirming = false
                 end
-            elseif !CImGui.IsAnyItemFocused() && button_value(world.inputs.quit)
+            elseif !CImGui.IsAnyItemFocused() && input_quit()
                 is_quit_confirming = true
             end
 
-            GLFW.SwapBuffers(window)
-
-            # Update timing.
-            now_time_ns = time_ns()
-            delta_seconds = (now_time_ns - last_time_ns) / Float32(1e9)
-            last_time_ns = now_time_ns
-            # Cap the duration of a frame, so big hangs don't cause chaos.
-            delta_seconds = min(0.2, delta_seconds)
-
-            # Wait, for a consistent framerate that doesn't burn cycles.
-            wait_time = (1/60) - delta_seconds
-            if wait_time >= 0.001
-                sleep(wait_time)
-            end
-
             # Force-show the window after precompilation is done.
-            frame_idx += 1
-            if frame_idx <= 10
-                GLFW.ShowWindow(window)
+            if LOOP.frame_idx == 10
+                GLFW.ShowWindow(LOOP.context.window)
             end
         end
 
-        close(view)
-        close(world)
-        close(assets)
+        TEARDOWN = begin
+            close(view)
+            close(world)
+            close(assets)
+        end
     end
     return 0
 catch e
@@ -114,6 +97,5 @@ catch e
     return 1
 end # try
 end # function
-
 
 end # module

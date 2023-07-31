@@ -141,9 +141,9 @@ function generate!(grid::VoxelGrid, b::VoxelBox{Val{TMode}}, use_threads::Bool) 
     # Compute the min and max voxels covered by this box.
     grid_size = vsize(grid)
     voxel_scale = convert(v3f, grid_size)
-    voxel_area = Box3Df(b.area.min * voxel_scale,
-                        b.area.size * voxel_scale)
-    voxel_min::v3f = voxel_area.min + @f32(0.5)
+    voxel_area = Box3Df((min = min_inclusive(b.area) * voxel_scale,
+                         size = size(b.area) * voxel_scale))
+    voxel_min::v3f = min_inclusive(voxel_area) + @f32(0.5)
     voxel_max::v3f = max_inclusive(voxel_area) - @f32(0.5)
 
     to_bounds(f::Float32) = UInt32(floor(max(@f32(0), f)))
@@ -257,17 +257,17 @@ function dsl_call(::Val{:Box}, args, dsl_state::DslState)::VoxelBox
         end
         delete!.(Ref(arg_dict), (:min, :max, :center, :size))
         arg_bounds = if all(isassigned, (arg_min, arg_max))
-                         Box_minmax(arg_min[], arg_max[])
+                         Box((min=arg_min[], max=arg_max[]))
                      elseif all(isassigned, (arg_min, arg_size))
-                         Box_minsize(arg_min[], arg_size[])
+                         Box((min=arg_min[], size=arg_size[]))
                      elseif all(isassigned, (arg_max, arg_size))
-                         Box_maxsize(arg_max[], arg_size[])
+                         Box((max=arg_max[], size=arg_size[]))
                      elseif all(isassigned, (arg_min, arg_center))
-                         Box_minsize(arg_min[], 2 * (arg_center[] - arg_min[]))
+                         Box((min=arg_min[], size=2 * (arg_center[] - arg_min[])))
                      elseif all(isassigned, (arg_max, arg_center))
-                         Box_maxsize(arg_max[], 2 * (arg_max[] - arg_center[]))
+                         Box((max=arg_max[], size=2 * (arg_max[] - arg_center[])))
                      elseif all(isassigned, (arg_center, arg_size))
-                         Box_centersize(arg_center[], arg_size[])
+                         Box((center=arg_center[], size=arg_size[]))
                      else
                          error(arg_min, "  ", arg_max, "  ", arg_size)
                      end
@@ -368,11 +368,11 @@ function dsl_copy(src::VoxelBox, changes::Dict{Any, Pair{Symbol, Any}}, dsl_stat
                 elseif rhs_value isa Real
                     rhs_value = v3f(rhs_value, rhs_value, rhs_value)
                 end
-                new_value = dynamic_modify(modification, dest[].area.min, rhs_value)
+                new_value = dynamic_modify(modification, min_inclusive(dest[].area), rhs_value)
 
                 # Set the min, leaving max unchanged.
                 dest[] = Setfield.setproperties(dest[], (
-                    area=Box_minmax(new_value, max_inclusive(dest[].area))
+                    area=Box((min=new_value, max=max_inclusive(dest[].area)))
                 ))
             end
         end
@@ -397,7 +397,7 @@ function dsl_copy(src::VoxelBox, changes::Dict{Any, Pair{Symbol, Any}}, dsl_stat
 
                 # Set the max, leaving min unchanged.
                 dest[] = Setfield.setproperties(dest[], (
-                    area=Box_minmax(dest[].area.min, new_value)
+                    area=Box((min=min_inclusive(dest[].area), max=new_value))
                 ))
             end
         end
@@ -422,7 +422,7 @@ function dsl_copy(src::VoxelBox, changes::Dict{Any, Pair{Symbol, Any}}, dsl_stat
 
                 # Set the center, leaving the size unchanged.
                 dest[] = Setfield.setproperties(dest[], (
-                    area=Box_centersize(new_value, dest[].area.size)
+                    area=Box((center=new_value, size=size(dest[].area)))
                 ))
             end
         end
@@ -443,11 +443,11 @@ function dsl_copy(src::VoxelBox, changes::Dict{Any, Pair{Symbol, Any}}, dsl_stat
                 elseif rhs_value isa Real
                     rhs_value = v3f(rhs_value, rhs_value, rhs_value)
                 end
-                new_value = dynamic_modify(modification, dest[].area.size, rhs_value)
+                new_value = dynamic_modify(modification, size(dest[].area), rhs_value)
 
                 # Set the size, leaving the center unchanged.
                 dest[] = Setfield.setproperties(dest[], (
-                    area=Box_centersize(center(dest[].area), new_value)
+                    area=Box((center=center(dest[].area), size=new_value))
                 ))
             end
         end

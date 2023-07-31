@@ -18,8 +18,7 @@ end
 
 
 function GUI(context::GL.Context, assets::Assets, world::World, view::PostProcess)
-    service::GuiService = service_gui_init(context)
-    return GUI(wnd=context.window, service=service)
+    return GUI(wnd=context.window, service=service_gui_get(context))
 end
 
 """The "debug region" is for debugging data"""

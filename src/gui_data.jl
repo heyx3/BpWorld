@@ -282,6 +282,7 @@ function gui_scene(func_try_compile_scene, # (String) -> Optional{String} : retu
                         open(joinpath(path, name), "r") do file::IO
                             scene.contents = read(file, String)
                         end
+                        scene.contents = replace(scene.contents, "\r"=>"")
                         # Update the string buffer.
                         resize!(state.scene_buffer,
                                 max(length(state.scene_buffer), length(scene.contents) + 1))
