@@ -1,3 +1,4 @@
 Manifest.toml
 imgui.ini
-build
+build/VoxelToy
+build/precompiles.jl

@@ -6,8 +6,13 @@ using GLFW, ModernGLbp, CImGui,
       ImageIO, FileIO, ColorTypes, FixedPointNumbers, ImageTransformations,
       CSyntax
 
+# Just to keep PackageCompiler happy.
+# I don't really understand why it was needed though.
+using PNGFiles, ImageMagick
+
 using Bplus
 @using_bplus
+
 
 include("Utils/Utils.jl")
 using .Utils
@@ -93,9 +98,9 @@ try
     end
     return 0
 catch e
-    @error exception=(e, catch_backtrace())
+    @error "$(sprint(showerror, e, catch_backtrace()))"
     return 1
 end # try
-end # function
+end # julia_main
 
 end # module

@@ -6,11 +6,11 @@
 # Configuration:
 const APP_NAME = "VoxelToy"
 const FOLDERS_TO_COPY = [ "assets", "layers", "scenes" ]
+const BUILD_FOLDER = "build"
+const TOP_LEVEL_CONTENTS_FOLDER = "CopyToBuild"
 
-# Move to and activate the game project folder.
+# Move to the game project folder.
 cd(joinpath(@__DIR__, ".."))
-using Pkg
-Pkg.activate(".")
 
 # Run the game to learn the set of functions to precompile.
 if !any(arg -> arg in ARGS, [ "-s", "--skip-play" ])
@@ -21,7 +21,6 @@ if !any(arg -> arg in ARGS, [ "-s", "--skip-play" ])
 end
 
 # Generate a standalone app.
-const BUILD_FOLDER = "build"
 using PackageCompiler
 PackageCompiler.create_app(
     ".", "build/$APP_NAME",
@@ -36,5 +35,12 @@ for folder_name in FOLDERS_TO_COPY
     Base.Filesystem.cp(joinpath(pwd(), folder_name),
                        joinpath(pwd(), BUILD_FOLDER,
                                 APP_NAME, folder_name),
+                       force=true)
+end
+
+# Copy top-level scripts over.
+for element in readdir(joinpath(pwd(), BUILD_FOLDER, TOP_LEVEL_CONTENTS_FOLDER))
+    Base.Filesystem.cp(joinpath(pwd(), BUILD_FOLDER, TOP_LEVEL_CONTENTS_FOLDER, element),
+                       joinpath(pwd(), BUILD_FOLDER, APP_NAME, element),
                        force=true)
 end
