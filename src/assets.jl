@@ -1,6 +1,4 @@
-macro bpw_asset_str(str::AbstractString)
-    return joinpath(ASSETS_PATH, str)
-end
+bpw_asset_path(relative::AbstractString) = joinpath(ASSETS_PATH, relative)
 
 #################
 ##   Shaders   ##
@@ -56,7 +54,7 @@ end
 function load_all_textures()::Tuple
     return tuple(
         load_tex(
-            bpw_asset"QuitConfirmation.png", vRGBAu8,
+            bpw_asset_path("QuitConfirmation.png"), vRGBAu8,
             SimpleFormat(FormatTypes.normalized_uint,
                          SimpleFormatComponents.RGBA,
                          SimpleFormatBitDepths.B8)

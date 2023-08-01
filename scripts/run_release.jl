@@ -5,4 +5,4 @@ Pkg.activate(".")
 
 using BpWorld
 # All asserts should be disabled by default.
-BpWorld.main()
+BpWorld.julia_main()

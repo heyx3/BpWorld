@@ -6,8 +6,13 @@ using GLFW, ModernGLbp, CImGui,
       ImageIO, FileIO, ColorTypes, FixedPointNumbers, ImageTransformations,
       CSyntax
 
+# Just to keep PackageCompiler happy.
+# I don't really understand why it was needed though.
+using PNGFiles, ImageMagick
+
 using Bplus
 @using_bplus
+
 
 include("Utils/Utils.jl")
 using .Utils
@@ -21,7 +26,8 @@ include("world.jl")
 include("post_process.jl")
 include("gui.jl")
 
-function main()
+function julia_main()::Cint
+try
     @game_loop begin
         INIT(
             v2i(1600, 900), "B+ World",
@@ -90,6 +96,11 @@ function main()
             close(assets)
         end
     end
-end
+    return 0
+catch e
+    @error "$(sprint(showerror, e, catch_backtrace()))"
+    return 1
+end # try
+end # julia_main
 
 end # module
