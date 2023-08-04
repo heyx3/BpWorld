@@ -26,8 +26,7 @@ include("world.jl")
 include("post_process.jl")
 include("gui.jl")
 
-function julia_main()::Cint
-try
+function main()::Nothing
     @game_loop begin
         INIT(
             v2i(1600, 900), "B+ World",
@@ -96,11 +95,16 @@ try
             close(assets)
         end
     end
-    return 0
-catch e
-    @error "$(sprint(showerror, e, catch_backtrace()))"
-    return 1
-end # try
+end
+
+function julia_main()::Cint
+    try
+        main()
+        return 0
+    catch e
+        @error "$(sprint(showerror, e, catch_backtrace()))"
+        return 1
+    end # try
 end # julia_main
 
 end # module

@@ -14,4 +14,4 @@ using BpWorld
 BpWorld.Utils.bpworld_asserts_enabled() = true
 
 # Run!
-BpWorld.julia_main()
+BpWorld.main()
