@@ -312,12 +312,14 @@ function gui_scene(func_try_compile_scene, # (String) -> Optional{String} : retu
                      scene.current_file_path,
                      AbstractString[ ])
 
-    just_changed_scene_contents::Bool = @c CImGui.InputTextMultiline(
-        "Code",
-        &state.scene_buffer[0], length(state.scene_buffer),
-        (0, 650),
-        CImGui.ImGuiInputTextFlags_AllowTabInput
-    )
+    just_changed_scene_contents::Bool = gui_with_font(1) do
+        return @c CImGui.InputTextMultiline(
+            "",
+            &state.scene_buffer[0], length(state.scene_buffer),
+            (0, 650),
+            CImGui.ImGuiInputTextFlags_AllowTabInput
+        )
+    end
     state.scene_changed |= just_changed_scene_contents
     if (state.parse_state == SceneState.ready) && state.scene_changed
         state.parse_state = SceneState.compiling

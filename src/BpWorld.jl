@@ -39,10 +39,19 @@ function main()::Nothing
         )
 
         SETUP = begin
+            gui_nice_font_config = CImGui.ImFontConfig_ImFontConfig()
+            unsafe_store!(gui_nice_font_config.OversampleH, Cint(8))
+            unsafe_store!(gui_nice_font_config.OversampleV, Cint(8))
+            gui_nice_font = CImGui.AddFontFromFileTTF(unsafe_load(CImGui.GetIO().Fonts),
+                                                      joinpath(ASSETS_PATH, "fonts/RonysiswadiArchitect4-qZmp2/font.ttf"),
+                                                      16,
+                                                      gui_nice_font_config)
+            CImGui.ImFontConfig_destroy(gui_nice_font_config)
+
             assets::Assets = Assets()
             world::World = World(LOOP.context.window, assets)
             view::PostProcess = PostProcess(LOOP.context.window, assets, world)
-            gui::GUI = GUI(LOOP.context, assets, world, view)
+            gui::GUI = GUI(LOOP.context, assets, world, view, gui_nice_font)
 
             is_quit_confirming::Bool = false
 
