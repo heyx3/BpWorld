@@ -49,7 +49,7 @@ Needs to be told which buffer the `VoxelVertex` data is coming from
     (given as its index in the `Mesh` object).
 "
 voxel_vertex_layout(buffer_idx::Int = 1) = [
-    VertexAttribute(buffer_idx, 0, VertexData_UVector(3, UInt32))
+    VertexAttribute(buffer_idx, 0, VSInput(v3u))
 ]
 
 
