@@ -224,12 +224,12 @@ function gui_scene(func_try_compile_scene, # (String) -> Optional{String} : retu
     end
     CImGui.SameLine()
     just_changed_new_file_name::Bool = @c CImGui.InputText(
-        "",
+        "##NewFileName",
         &state.new_name_buffer[0], length(state.new_name_buffer),
         0
     )
     if just_changed_new_file_name
-        null_idx = findfirst('\0', state.new_name_buffer)
+        null_idx = findfirst(iszero, state.new_name_buffer)
         scene.new_file_name = String(@view state.new_name_buffer[1:(null_idx-1)])
     end
     if CImGui.Button("Refresh Scene Files") #TODO: Just refresh every second or so instead
@@ -314,7 +314,7 @@ function gui_scene(func_try_compile_scene, # (String) -> Optional{String} : retu
 
     just_changed_scene_contents::Bool = gui_with_font(1) do
         return @c CImGui.InputTextMultiline(
-            "",
+            "##SceneDSL",
             &state.scene_buffer[0], length(state.scene_buffer),
             (0, 650),
             CImGui.ImGuiInputTextFlags_AllowTabInput
