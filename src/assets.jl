@@ -31,6 +31,33 @@ compile_shader_files(name_without_ext::AbstractString; kw...) = compile_shader_f
     ; kw...
 )
 
+#################
+##   Buffers   ##
+#################
+
+struct UBO_Fog
+    density::Float32
+    dropoff::Float32
+
+    heightOffset::Float32
+    heightScale::Float32
+
+    color::vRGBf
+    padding::UInt32
+
+    UBO_Fog(gui_fog) = new(
+        gui_fog.density, gui_fog.dropoff,
+        gui_fog.height_offset, gui_fog.height_scale,
+        gui_fog.color, 0
+    )
+    UBO_Fog(density, dropoff, height_offset, height_scale, color) = new(
+        density, dropoff,
+        height_offset, height_scale,
+        color, 0
+    )
+end
+const UBO_IDX_FOG = 1
+
 
 ################
 ##   Assets   ##
@@ -39,6 +66,8 @@ compile_shader_files(name_without_ext::AbstractString; kw...) = compile_shader_f
 mutable struct Assets
     tex_quit_confirmation::Texture
     prog_lighting::Program
+
+    ubo_buffer_fog::Buffer
 end
 function Base.close(a::Assets)
     # Try to close() everything that isnt specifically blacklisted.
@@ -74,12 +103,24 @@ function load_all_shaders()::Tuple
     )
 end
 
+function load_all_buffers()::Tuple
+    return tuple(
+        # Set each buffer's UBO binding index as it's created.
+        let b = Buffer(true, [ UBO_Fog(0, 0, 0, 0, zero(vRGBf)) ])
+            set_uniform_block(b, UBO_IDX_FOG)
+            b
+        end
+    )
+end
+
+
 function Assets()
     textures::Tuple = load_all_textures()
     shaders::Tuple = load_all_shaders()
+    buffers::Tuple = load_all_buffers()
 
     check_gl_logs("After asset initialization")
-    return Assets(textures..., shaders...)
+    return Assets(textures..., shaders..., buffers...)
 end
 
 
@@ -94,6 +135,10 @@ const G_BUFFER_SAMPLER = TexSampler{2}(
     mip_filter = nothing
 )
 
+function update_buffers(assets::Assets, gui_fog)
+    Bplus.GL.set_buffer_data(assets.ubo_buffer_fog, [ UBO_Fog(gui_fog) ])
+end
+
 function prepare_program_lighting( assets::Assets,
                                    tex_depth::Texture,
                                    tex_colors::Texture,
@@ -103,8 +148,7 @@ function prepare_program_lighting( assets::Assets,
                                    light_shadowmap::Texture,
                                    light_shadow_bias::Float32,
                                    light_viewproj::fmat4,
-                                   cam::Cam3D, #TODO: Have the camera store and update its own view/projection/etc every "tick"
-                                   fog::FogData
+                                   cam::Cam3D #TODO: Have the camera store and update its own view/projection/etc every "tick"
                                  )
     mat_proj = cam_projection_mat(cam)
     mat_inv_view_proj = m_invert(m_combine(cam_view_mat(cam), mat_proj))
@@ -133,12 +177,6 @@ function prepare_program_lighting( assets::Assets,
         ("u_sunlight.shadowmap", light_shadowmap),
         ("u_sunlight.shadowBias", light_shadow_bias),
         ("u_sunlight.worldToTexelMat", mat_world_to_light_texel),
-
-        ("u_fog.density", fog.density),
-        ("u_fog.dropoff", fog.dropoff),
-        ("u_fog.color", fog.color),
-        ("u_fog.heightOffset", fog.height_offset),
-        ("u_fog.heightScale", fog.height_scale),
 
         ("u_camera.pos", cam.pos),
         ("u_camera.nearClip", min_inclusive(cam.clip_range)),

@@ -27,9 +27,6 @@ struct Camera
 };
 uniform Camera u_camera;
 
-uniform Fog u_fog = Fog(0.0, 1.0, vec3(1, 0, 1), 420.0, 0.01);
-
-
 //BRDF-related equations, using the "micro-facet" model.
 //Reference: https://learnopengl.com/PBR/Lighting
 
@@ -205,7 +202,7 @@ if (false) { //TODO: Debug this stuff
     //TODO: Emissive
 
     //Compute height-fog.
-    vec3 foggedColor = computeFoggedColor(u_fog, u_camera.pos.z, worldPos.z,
+    vec3 foggedColor = computeFoggedColor(u_camera.pos.z, worldPos.z,
                                           worldDist, verticalWorldDist,
                                           surfaceLight);
 

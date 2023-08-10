@@ -69,6 +69,7 @@ function main()::Nothing
 
             gui_begin_debug_region(gui)
             update(world, LOOP.delta_seconds, LOOP.context.window)
+            update_buffers(assets, world.fog)
             render(world, assets)
             render(view, LOOP.context.window, assets, world)
             gui_end_debug_region(gui)

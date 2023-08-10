@@ -33,8 +33,7 @@ function render(view::PostProcess, window::GLFW.Window, assets::Assets, world::W
         world.target_tex_shadowmap, @f32(10),
         world.sun_viewproj,
 
-        world.cam,
-        world.fog
+        world.cam
     )
     view_activate(get_view(world.target_tex_shadowmap))
     view_activate(get_view(world.target_tex_depth, G_BUFFER_SAMPLER))
