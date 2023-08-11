@@ -72,8 +72,8 @@ struct UBO_Light
     world_to_texel_mat::fmat4
 
     UBO_Light(dir, color, shadowmap, shadow_bias, world_to_texel_mat) = new(
-        v4f(dir..., 0),
-        vRGBAf(color..., 1),
+        vappend(dir, 0),
+        vappend(color, 1),
 
         if shadowmap isa Texture
             get_view(shadowmap).handle
@@ -93,6 +93,62 @@ end
             "but it was $(sizeof(UBO_Light))")
 const UBO_IDX_LIGHT = 2
 
+struct UBO_Camera
+    pos::v4f
+    forward::v4f
+    upward::v4f
+    rightward::v4f
+
+    mat_view::fmat4
+    mat_projection::fmat4
+    mat_view_proj::fmat4
+    mat_inv_view_proj::fmat4
+
+    near_clip::Float32
+    far_clip::Float32
+    padding_1::Float32
+    padding_2::Float32
+    
+
+    UBO_Camera(pos, forward, upward, rightward,
+               near_clip, far_clip,
+               mat_view, mat_projection,
+               mat_view_proj = m_combine(mat_view, mat_projection),
+               mat_inv_view_proj = m_invert(mat_view_proj)) = new(
+        vappend(pos, 1),
+        vappend(forward, 0),
+        vappend(upward, 0),
+        vappend(rightward, 0),
+        mat_view, mat_projection, mat_view_proj, mat_inv_view_proj,
+        near_clip, far_clip,
+        0, 0
+    )
+    UBO_Camera(cam::Cam3D) = UBO_Camera(
+        cam.pos,
+        let basis = Bplus.Helpers.cam_basis(cam)
+            tuple(basis.forward, basis.up, basis.right)
+        end...,
+        min_inclusive(cam.clip_range), max_inclusive(cam.clip_range),
+        cam_view_mat(cam), cam_projection_mat(cam)
+    )
+end
+@bp_check(sizeof(UBO_Camera) == sum(sizeof.(fieldtypes(UBO_Camera))),
+          "Expected UBO_Camera to be $(sum(sizeof.(fieldtypes(UBO_Camera)))) bytes ",
+            "but it was $(sizeof(UBO_Camera))")
+let fo = fieldoffset(UBO_Camera, Base.fieldindex(UBO_Camera, :near_clip))
+    @bp_check(fo == (16 * 4) + (64 * 4),
+              "Field offset of :near_clip was ", fo)
+end
+let fo = fieldoffset(UBO_Camera, Base.fieldindex(UBO_Camera, :far_clip))
+    @bp_check(fo == (16 * 4) + (64 * 4) + 4,
+              "Field offset of :far_clip was ", fo)
+end
+let fo = fieldoffset(UBO_Camera, Base.fieldindex(UBO_Camera, :mat_view))
+    @bp_check(fo == (16 * 4),
+              "Field offset of :mat_view was ", fo)
+end
+const UBO_IDX_CAMERA = 3
+
 
 ################
 ##   Assets   ##
@@ -104,6 +160,7 @@ mutable struct Assets
 
     ubo_buffer_fog::Buffer
     ubo_buffer_sun::Buffer
+    ubo_buffer_cam::Buffer
 end
 function Base.close(a::Assets)
     # Try to close() everything that isnt specifically blacklisted.
@@ -149,6 +206,13 @@ function load_all_buffers()::Tuple
         let b = Buffer(true, [ UBO_Light(zero(v3f), zero(vRGBf), Bplus.GL.Ptr_View(), 0, zero(fmat4)) ])
             set_uniform_block(b, UBO_IDX_LIGHT)
             b
+        end,
+        let b = Buffer(true, [ UBO_Camera(zero(v3f), zero(v3f), zero(v3f), zero(v3f),
+                                          0, 0,
+                                          zero(fmat4), zero(fmat4),
+                                          zero(fmat4), zero(fmat4)) ])
+            set_uniform_block(b, UBO_IDX_CAMERA)
+            b
         end
     )
 end
@@ -175,12 +239,13 @@ const G_BUFFER_SAMPLER = TexSampler{2}(
     mip_filter = nothing
 )
 
-function update_buffers(assets::Assets, gui_fog, gui_sun,
+function update_buffers(assets::Assets, gui_fog, gui_sun, cam,
                         shadowmap, world_pos_to_sun_texel::fmat4)
     set_buffer_data(assets.ubo_buffer_fog, [ UBO_Fog(gui_fog) ])
     set_buffer_data(assets.ubo_buffer_sun, [ UBO_Light(gui_sun.dir, gui_sun.color,
                                                        shadowmap, @f32(10),
                                                        world_pos_to_sun_texel) ])
+    set_buffer_data(assets.ubo_buffer_cam, [ UBO_Camera(cam) ])
 end
 
 function prepare_program_lighting( assets::Assets,

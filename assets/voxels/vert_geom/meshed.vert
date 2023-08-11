@@ -24,7 +24,6 @@ UnpackedVertexInput unpackInput(uvec3 vIn)
 #include <../assets/voxels/vert_geom/vert_processing.shader>
 
 
-
 out vec3 fIn_worldPos;
 out vec3 fIn_voxelPos;
 out vec2 fIn_uv;

@@ -48,14 +48,17 @@ function LayerMaterial(data::LayerData)::LayerMaterial
         # Vertex/geometry shaders depend on whether the layer is meshed yet.
         vert_preview = """
             #include <$BUILTIN_SHADERS_INCLUDE_PATH/utils.shader>
+            #include <$BUILTIN_SHADERS_INCLUDE_PATH/buffers.shader>
             #include <$BUILTIN_SHADERS_INCLUDE_PATH/vert_geom/preview.vert>
         """
         vert_meshed = """
             #include <$BUILTIN_SHADERS_INCLUDE_PATH/utils.shader>
+            #include <$BUILTIN_SHADERS_INCLUDE_PATH/buffers.shader>
             #include <$BUILTIN_SHADERS_INCLUDE_PATH/vert_geom/meshed.vert>
         """
         geom_preview = """
             #include <$BUILTIN_SHADERS_INCLUDE_PATH/utils.shader>
+            #include <$BUILTIN_SHADERS_INCLUDE_PATH/buffers.shader>
             #include <$BUILTIN_SHADERS_INCLUDE_PATH/vert_geom/preview.geom>
         """
 
@@ -72,6 +75,7 @@ function LayerMaterial(data::LayerData)::LayerMaterial
         # Fragment shaders depend on which pass is being rendered.
         frag_deferred = """
             #include <$BUILTIN_SHADERS_INCLUDE_PATH/utils.shader>
+            #include <$BUILTIN_SHADERS_INCLUDE_PATH/buffers.shader>
             #include <$BUILTIN_SHADERS_INCLUDE_PATH/frag/input.shader>
             #include <$BUILTIN_SHADERS_INCLUDE_PATH/frag/output_deferred.shader>
 
@@ -82,6 +86,7 @@ function LayerMaterial(data::LayerData)::LayerMaterial
         """
         frag_depth = """
             #include <$BUILTIN_SHADERS_INCLUDE_PATH/utils.shader>
+            #include <$BUILTIN_SHADERS_INCLUDE_PATH/buffers.shader>
             #include <$BUILTIN_SHADERS_INCLUDE_PATH/frag/input.shader>
             #include <$BUILTIN_SHADERS_INCLUDE_PATH/frag/output_depth.shader>
 
@@ -165,7 +170,7 @@ const DEFAULT_SAMPLER = TexSampler{2}(
 
 function prepare_voxel_render( prog::Program,
                                offset::v3f, scale::v3f,
-                               cam_mat_viewproj::fmat4
+                               mat_viewproj::fmat4
                              )
     # Set render state.
     set_depth_writes(true)
@@ -176,14 +181,11 @@ function prepare_voxel_render( prog::Program,
 
     set_uniform(prog, "u_world_offset", offset)
     set_uniform(prog, "u_world_scale", scale)
-    set_uniform(prog, "u_mat_viewproj", cam_mat_viewproj)
+    set_uniform(prog, "u_mat_viewproj", mat_viewproj)
 end
 function prepare_voxel_gbuffer_render( prog::Program, material::LayerMaterial,
-                                       cam::Cam3D, elapsed_seconds::Float32
+                                       elapsed_seconds::Float32
                                      )
-    set_uniform(prog, "u_camPos", cam.pos)
-    set_uniform(prog, "u_camForward", cam.forward)
-    set_uniform(prog, "u_camUp", cam.up)
     set_uniform(prog, "u_totalSeconds", elapsed_seconds)
     for (u_name, texture) in material.textures
         set_uniform(prog, u_name, texture)
@@ -201,17 +203,17 @@ end
 "Renders a voxel layer with depth-only, using the 'meshed' shader program"
 function render_voxels_depth_only(mesh::Mesh, material::LayerMaterial,
                                   offset::v3f, scale::v3f,
-                                  cam::Cam3D, camera_mat_viewproj::fmat4
+                                  mat_viewproj::fmat4
                                  )
     prog::Program = material.depth_meshed
-    prepare_voxel_render(prog, offset, scale, camera_mat_viewproj)
+    prepare_voxel_render(prog, offset, scale, mat_viewproj)
     render_mesh(mesh, prog)
 end
 "Renders a voxel layer with depth-only, using the 'preview' shader program"
 function render_voxels_depth_only( voxels::Texture, layer_idx::Integer,
                                    material::LayerMaterial,
                                    offset::v3f, scale::v3f,
-                                   cam::Cam3D, camera_mat_viewproj::fmat4
+                                   camera_mat_viewproj::fmat4
                                  )
     prog::Program = material.depth_preview
     prepare_voxel_render(prog, offset, scale, camera_mat_viewproj)
@@ -236,13 +238,13 @@ end
 
 "Renders a voxel layer, using the 'meshed' shader program"
 function render_voxels( mesh::Mesh, material::LayerMaterial,
-                        offset::v3f, scale::v3f, camera::Cam3D,
+                        offset::v3f, scale::v3f,
                         total_elapsed_seconds::Float32,
-                        camera_mat_viewproj::fmat4
+                        mat_viewproj::fmat4
                       )
     prog::Program = material.deferred_meshed
-    prepare_voxel_render(prog, offset, scale, camera_mat_viewproj)
-    prepare_voxel_gbuffer_render(prog, material, camera, total_elapsed_seconds)
+    prepare_voxel_render(prog, offset, scale, mat_viewproj)
+    prepare_voxel_gbuffer_render(prog, material, total_elapsed_seconds)
 
     # Render, and take care of texture views.
     for texture in values(material.textures)
@@ -256,13 +258,13 @@ end
 "Renders a voxel layer, using the 'preview' shader program"
 function render_voxels( voxels::Texture, layer_idx::Integer,
                         material::LayerMaterial,
-                        offset::v3f, scale::v3f, camera::Cam3D,
+                        offset::v3f, scale::v3f,
                         total_elapsed_seconds::Float32,
-                        camera_mat_viewproj::fmat4
+                        mat_viewproj::fmat4
                       )
     prog::Program = material.deferred_preview
-    prepare_voxel_render(prog, offset, scale, camera_mat_viewproj)
-    prepare_voxel_gbuffer_render(prog, material, camera, total_elapsed_seconds)
+    prepare_voxel_render(prog, offset, scale, mat_viewproj)
+    prepare_voxel_gbuffer_render(prog, material, total_elapsed_seconds)
     prepare_voxel_preview_render(prog, voxels, layer_idx)
 
     # Render, and take care of texture views.

@@ -3,7 +3,7 @@
 
 #define PASS_DEFERRED 1
 
-layout (location = 0) out vec4 fOut_colors; //RGB=albedo, A=emissive multiplieer
+layout (location = 0) out vec4 fOut_colors; //RGB=albedo, A=emissive multiplier
 layout (location = 1) out vec2 fOut_surface; //R=metallic, G=roughness
 layout (location = 2) out vec3 fOut_normal; //RGB=signed normal
 

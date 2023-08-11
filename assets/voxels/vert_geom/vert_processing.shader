@@ -8,7 +8,7 @@
 //No world-space rotation is allowed, to simplify normals calculation.
 //TODO: Expose this data to the fragment shader as well
 uniform vec3 u_world_offset, u_world_scale;
-uniform mat4 u_mat_viewproj;
+uniform mat4 u_mat_viewproj; //NOTE: Not necessarily the camera's matrix, e.x. when doing shadow maps
 
 //Packs a 0-3 axis value and -1/+1 direction value into the first 3 bits of a uint.
 uint packFaceData(uint axis, int dir)

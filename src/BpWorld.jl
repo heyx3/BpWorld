@@ -69,7 +69,7 @@ function main()::Nothing
 
             gui_begin_debug_region(gui)
             update(world, LOOP.delta_seconds, LOOP.context.window)
-            update_buffers(assets, world.fog, world.sun, world.target_tex_shadowmap,
+            update_buffers(assets, world.fog, world.sun, world.cam, world.target_tex_shadowmap,
                 # The light's view-projection matrix brings it into NDC space, -1 to +1.
                 # We need to take it one step further, into "texel" space, 0 to 1.
                 # This includes the Z value, since the depth texture normalizes depth to that range.

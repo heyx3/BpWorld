@@ -1,6 +1,7 @@
 //#TODO: Use a compute shader instead
 
 #include <../assets/voxels/utils.shader>
+#include <../assets/voxels/buffers.shader>
 #include <../assets/post_processing/fog.shader>
 
 struct GBuffer
@@ -17,13 +18,6 @@ layout(std140, binding=1) uniform LightBlock {
     mat4 worldToTexelMat;
 } u_sun;
 
-struct Camera
-{
-    vec3 pos, forward, right, up;
-    float nearClip, farClip;
-    mat4 projectionMat, invViewProjMat;
-};
-uniform Camera u_camera;
 
 //BRDF-related equations, using the "micro-facet" model.
 //Reference: https://learnopengl.com/PBR/Lighting
@@ -122,9 +116,9 @@ void main() {
     //Read the depth texture and compute world position.
     float rawDepth = textureLod(u_gBuffer.depth, fIn_uv, 0.0).r;
     vec3 ndcPos = -1.0 + (2.0 * vec3(fIn_uv, rawDepth));
-    vec4 worldPos4 = u_camera.invViewProjMat * vec4(ndcPos, 1.0);
+    vec4 worldPos4 = u_cam.matInvViewProj * vec4(ndcPos, 1.0);
     vec3 worldPos = worldPos4.xyz / worldPos4.w;
-    vec3 camTowardsPos = worldPos - u_camera.pos;
+    vec3 camTowardsPos = worldPos - u_cam.pos.xyz;
     float verticalWorldDist = abs(camTowardsPos.z);
     float worldDist = length(camTowardsPos);
     camTowardsPos /= worldDist;
@@ -147,9 +141,9 @@ void main() {
 
     //Try computing world position in the new, fancy way.
     vec3 NEW_camTowardsPos = normalize(fIn_camToFragment);
-    vec4 NEW_worldPosData = positionFromDepth(u_camera.projectionMat,
-                                              u_camera.pos,
-                                              u_camera.forward,
+    vec4 NEW_worldPosData = positionFromDepth(u_cam.matProjection,
+                                              u_cam.pos.xyz,
+                                              u_cam.forward.xyz,
                                               normalize(fIn_camToFragment),
                                               rawDepth);
     vec3 NEW_worldPos = NEW_worldPosData.xyz;
@@ -165,13 +159,13 @@ if (false) { //TODO: Debug this stuff
 //return;
     worldPos = NEW_worldPos;
     worldDist = NEW_worldDist;
-    camTowardsPos = u_camera.pos - worldPos;
+    camTowardsPos = u_cam.pos.xyz - worldPos;
     verticalWorldDist = abs(camTowardsPos.z);
     camTowardsPos /= worldDist;
     towardsCam = -camTowardsPos;
 }
 
-    float linearDepth = linearizedDepth(rawDepth, u_camera.nearClip, u_camera.farClip);
+    float linearDepth = linearizedDepth(rawDepth, u_cam.nearClip, u_cam.farClip);
 
     //Read normals.
     vec3 normal = normalize(textureLod(u_gBuffer.normals, fIn_uv, 0.0).rgb);
@@ -200,7 +194,7 @@ if (false) { //TODO: Debug this stuff
     //TODO: Emissive
 
     //Compute height-fog.
-    vec3 foggedColor = computeFoggedColor(u_camera.pos.z, worldPos.z,
+    vec3 foggedColor = computeFoggedColor(u_cam.pos.z, worldPos.z,
                                           worldDist, verticalWorldDist,
                                           surfaceLight);
 

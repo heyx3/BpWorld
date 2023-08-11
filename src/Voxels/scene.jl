@@ -136,37 +136,37 @@ function update(scene::Scene, delta_seconds::Float32)
     end
 end
 
-function render(scene::Scene, cam::Cam3D,
-                mat_cam_viewproj::fmat4, elapsed_seconds::Float32,
+function render(scene::Scene,
+                mat_viewproj::fmat4, elapsed_seconds::Float32,
                 material_cache::RendererCache)
     for i::Int in 1:length(scene.layer_meshes)
         material = get_material!(material_cache, scene.layer_meshes[i][1])
         if exists(scene.layer_meshes[i][2])
             render_voxels(scene.layer_meshes[i][2][3], material,
                           zero(v3f), scene.world_scale,
-                          cam, elapsed_seconds, mat_cam_viewproj)
+                          elapsed_seconds, mat_viewproj)
         else
             render_voxels(scene.grid_tex3d, i, material,
                           zero(v3f), scene.world_scale,
-                          cam, elapsed_seconds, mat_cam_viewproj)
+                          elapsed_seconds, mat_viewproj)
         end
     end
 
     return nothing
 end
 function render_depth_only(scene::Scene,
-                           cam::Cam3D, mat_cam_viewproj::fmat4,
+                           mat_viewproj::fmat4,
                            material_cache::RendererCache)
     for i::Int in 1:length(scene.layer_meshes)
         material = get_material!(material_cache, scene.layer_meshes[i][1])
         if exists(scene.layer_meshes[i][2])
             render_voxels_depth_only(scene.layer_meshes[i][2][3], material,
                                      zero(v3f), scene.world_scale,
-                                     cam, mat_cam_viewproj)
+                                     mat_viewproj)
         else
             render_voxels_depth_only(scene.grid_tex3d, i, material,
                                      zero(v3f), scene.world_scale,
-                                     cam, mat_cam_viewproj)
+                                     mat_viewproj)
         end
     end
 end

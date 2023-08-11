@@ -327,7 +327,7 @@ function render_depth_only(world::World, assets::Assets, mat_viewproj::fmat4)
     set_color_writes(Vec(false, false, false, false))
     set_depth_writes(true)
     set_depth_test(ValueTests.less_than)
-    Voxels.render_depth_only(world.voxels, world.cam, mat_viewproj, world.voxel_materials)
+    Voxels.render_depth_only(world.voxels, mat_viewproj, world.voxel_materials)
     set_color_writes(Vec(true, true, true, true))
 end
 
@@ -359,7 +359,7 @@ function render(world::World, assets::Assets)
     target_clear(world.g_buffer, @f32 1.0)
 
     # Draw the voxels.
-    Voxels.render(world.voxels, world.cam, mat_cam_viewproj,
+    Voxels.render(world.voxels, mat_cam_viewproj,
                   world.total_seconds, world.voxel_materials)
 
     # Calculate an orthogonal view-projection matrix for the sun's shadow-map.
