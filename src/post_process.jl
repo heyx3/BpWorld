@@ -28,11 +28,6 @@ function render(view::PostProcess, window::GLFW.Window, assets::Assets, world::W
     prepare_program_lighting(assets,
         world.target_tex_depth, world.target_tex_color,
         world.target_tex_normals, world.target_tex_surface,
-
-        world.sun,
-        world.target_tex_shadowmap, @f32(10),
-        world.sun_viewproj,
-
         world.cam
     )
     view_activate(get_view(world.target_tex_shadowmap))

@@ -9,15 +9,13 @@ struct GBuffer
 };
 uniform GBuffer u_gBuffer;
 
-struct DirectionalLight
-{
-    vec3 dir;
-    vec3 emission;
+layout(std140, binding=1) uniform LightBlock {
+    vec4 dir;
+    vec4 emission;
     sampler2DShadow shadowmap;
     float shadowBias;
     mat4 worldToTexelMat;
-};
-uniform DirectionalLight u_sunlight;
+} u_sun;
 
 struct Camera
 {
@@ -136,7 +134,7 @@ void main() {
     if (rawDepth == 1.0)
     {
         vec3 reflectedColor = vec3(0.8, 0.825, 1.0) +
-                              pow(max(0.0, dot(u_sunlight.dir, -camTowardsPos)),
+                              pow(max(0.0, dot(u_sun.dir.xyz, -camTowardsPos)),
                                   256.0);
         fOut_color = vec4(reflectedColor, 0);
         return;
@@ -186,15 +184,15 @@ if (false) { //TODO: Debug this stuff
     //Compute lighting.
     //Surface model:
     vec3 surfaceLight = microfacetLighting(
-        normal, -camTowardsPos, -u_sunlight.dir,
-        u_sunlight.emission,
+        normal, -camTowardsPos, -u_sun.dir.xyz,
+        u_sun.emission.rgb,
         albedo, metallic, roughness
     );
     //Shadow-maps:
-    vec3 shadowMapWorldPos = worldPos - (u_sunlight.dir * u_sunlight.shadowBias);
-    vec4 shadowmapTexel4 = u_sunlight.worldToTexelMat * vec4(shadowMapWorldPos, 1);
+    vec3 shadowMapWorldPos = worldPos - (u_sun.dir.xyz * u_sun.shadowBias);
+    vec4 shadowmapTexel4 = u_sun.worldToTexelMat * vec4(shadowMapWorldPos, 1);
     vec3 shadowmapTexel = shadowmapTexel4.xyz / shadowmapTexel4.w;
-    float shadowMask = texture(u_sunlight.shadowmap, shadowmapTexel).r;
+    float shadowMask = texture(u_sun.shadowmap, shadowmapTexel).r;
     surfaceLight *= shadowMask;
     //Ambient:
     surfaceLight += ambientLighting(worldPos, normal, albedo);

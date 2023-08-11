@@ -4,7 +4,7 @@ layout(std140, binding=0) uniform FogBlock {
     float dropoff;
     float heightOffset;
     float heightScale;
-    vec3 color;
+    vec4 color;
 } u_fog;
 
 vec3 computeFoggedColor(float camHeight,
@@ -27,5 +27,5 @@ vec3 computeFoggedColor(float camHeight,
     float fogThickness = SATURATE(u_fog.density * fogDensityIntegral);
     fogThickness = pow(fogThickness, u_fog.dropoff);
 
-    return mix(surfaceColor, u_fog.color, fogThickness);
+    return mix(surfaceColor, u_fog.color.rgb, fogThickness);
 }
