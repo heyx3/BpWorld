@@ -99,15 +99,15 @@ struct UBO_Camera
     upward::v4f
     rightward::v4f
 
-    mat_view::fmat4
-    mat_projection::fmat4
-    mat_view_proj::fmat4
-    mat_inv_view_proj::fmat4
-
     near_clip::Float32
     far_clip::Float32
     padding_1::Float32
     padding_2::Float32
+
+    mat_view::fmat4
+    mat_projection::fmat4
+    mat_view_proj::fmat4
+    mat_inv_view_proj::fmat4
     
 
     UBO_Camera(pos, forward, upward, rightward,
@@ -119,9 +119,9 @@ struct UBO_Camera
         vappend(forward, 0),
         vappend(upward, 0),
         vappend(rightward, 0),
-        mat_view, mat_projection, mat_view_proj, mat_inv_view_proj,
         near_clip, far_clip,
-        0, 0
+        0, 0,
+        mat_view, mat_projection, mat_view_proj, mat_inv_view_proj
     )
     UBO_Camera(cam::Cam3D) = UBO_Camera(
         cam.pos,
@@ -136,15 +136,15 @@ end
           "Expected UBO_Camera to be $(sum(sizeof.(fieldtypes(UBO_Camera)))) bytes ",
             "but it was $(sizeof(UBO_Camera))")
 let fo = fieldoffset(UBO_Camera, Base.fieldindex(UBO_Camera, :near_clip))
-    @bp_check(fo == (16 * 4) + (64 * 4),
+    @bp_check(fo == (16 * 4),
               "Field offset of :near_clip was ", fo)
 end
 let fo = fieldoffset(UBO_Camera, Base.fieldindex(UBO_Camera, :far_clip))
-    @bp_check(fo == (16 * 4) + (64 * 4) + 4,
+    @bp_check(fo == (16 * 4) + 4,
               "Field offset of :far_clip was ", fo)
 end
 let fo = fieldoffset(UBO_Camera, Base.fieldindex(UBO_Camera, :mat_view))
-    @bp_check(fo == (16 * 4),
+    @bp_check(fo == (16 * 4) + (4 * 4),
               "Field offset of :mat_view was ", fo)
 end
 const UBO_IDX_CAMERA = 3

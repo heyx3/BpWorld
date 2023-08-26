@@ -6,11 +6,11 @@ layout(std140, binding=2) uniform CamBlock {
     vec4 upward;
     vec4 rightward;
 
+    float nearClip;
+    float farClip;
+
     mat4 matView;
     mat4 matProjection;
     mat4 matViewProj;
     mat4 matInvViewProj;
-
-    float nearClip;
-    float farClip;
 } u_cam;
