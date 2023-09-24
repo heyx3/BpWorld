@@ -91,7 +91,7 @@ function main()::Nothing
             if is_quit_confirming
                 draw_scale = v3f((assets.tex_quit_confirmation.size.xy / window_size)...,
                                  1)
-                simple_blit(LOOP.service_basic_graphics, assets.tex_quit_confirmation,
+                simple_blit(assets.tex_quit_confirmation,
                             quad_transform=m_scale(draw_scale))
                 if input_quit_confirm()
                     break

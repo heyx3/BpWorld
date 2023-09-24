@@ -1,7 +1,7 @@
 "Manages the main interface for the program"
 Base.@kwdef mutable struct GUI
     wnd::GLFW.Window
-    service::Bplus.GUI.GuiService
+    service::Service_GUI
 
     is_debug_window_open::Bool = false
 
@@ -22,7 +22,7 @@ end
 function GUI(context::GL.Context, assets::Assets, world::World, view::PostProcess,
              nice_font)
     return GUI(wnd=context.window,
-               service=service_gui_get(context),
+               service=service_GUI(),
                nice_font=nice_font)
 end
 

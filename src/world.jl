@@ -206,17 +206,16 @@ function World(window::GLFW.Window, assets::Assets)
         sun_shadowmap_data...,
 
         Cam3D{Float32}(
-            v3f(30, -30, 670),
-            vnorm(v3f(1.0, 1.0, -1.0)),
-            get_up_vector(),
-            IntervalF(min=0.05, max=1000),
-            @f32(100),
-            @f32(window_size.x / window_size.y)
+            pos=v3f(30, -30, 670),
+            forward=vnorm(v3f(1, 1, -0.2)),
+            clip_range=IntervalF(min=0.05, max=1000),
+            fov_degrees=@f32(100),
+            aspect_width_over_height=@f32(window_size.x / window_size.y)
         ),
         Cam3D_Settings{Float32}(
-            move_speed = @f32(50),
-            move_speed_min = @f32(5),
-            move_speed_max = @f32(100)
+            move_speed=@f32(50),
+            move_speed_min=@f32(5),
+            move_speed_max=@f32(100)
         ),
         false, @f32(0.0),
 
@@ -251,11 +250,14 @@ function update(world::World, delta_seconds::Float32, window::GLFW.Window)
     cam_turn = input_cam_turn()
     cam_move = input_cam_move()
     cam_input = Cam3D_Input(
-        world.is_mouse_captured,
-        cam_turn...,
-        input_cam_sprint(),
-        cam_move.y, cam_move.x, cam_move.z,
-        input_cam_speed_change()
+        controlling_rotation=world.is_mouse_captured,
+        yaw=cam_turn.x,
+        pitch=cam_turn.y,
+        boost=input_cam_sprint(),
+        forward=cam_move.y,
+        right=cam_move.x,
+        up=cam_move.z,
+        speed_change=input_cam_speed_change()
     )
     (world.cam, world.cam_settings) = cam_update(world.cam, world.cam_settings, cam_input, delta_seconds)
 

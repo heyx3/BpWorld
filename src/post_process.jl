@@ -19,7 +19,7 @@ end
 
 function render(view::PostProcess, window::GLFW.Window, assets::Assets, world::World)
     context::Context = get_context()
-    resources::BasicGraphicsService = get_basic_graphics(context)
+    resources::Service_BasicGraphics = service_BasicGraphics()
 
     target_activate(nothing)
     render_clear(context, GL.Ptr_Target(), v4f(1, 0, 1, 0))
