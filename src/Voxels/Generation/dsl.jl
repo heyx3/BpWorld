@@ -367,7 +367,7 @@ function dsl_copy_field(dest::Ref, prop_name::Symbol,
     new_value = if modification == :(=)
                     rhs_value
                 elseif haskey(ASSIGNMENT_INNER_OP, modification)
-                    dynamic_modify(modification, getproperty(dest[], prop_name), rhs_value)
+                    compute_op(modification, getproperty(dest[], prop_name), rhs_value)
                 else
                     error("Unsupported operator: ", modification)
                 end

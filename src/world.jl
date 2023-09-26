@@ -179,8 +179,12 @@ function World(window::GLFW.Window, assets::Assets)
     # Parse voxel layers.
     (scene_dsl, layers_by_id) = grab_layers(gui_scene.contents)
     scene_dsl_expr = Meta.parseall(scene_dsl)
-    voxel_generator::Voxels.Generation.AbstractVoxelGenerator =
-        Voxels.Generation.eval_dsl(scene_dsl_expr)
+    voxel_generator = Voxels.Generation.eval_dsl(scene_dsl_expr)
+    if voxel_generator isa Voxels.Generation.DslError
+        error("Failed to compile initial default voxel scene: ", sprint(showerror, voxel_generator))
+    elseif !isa(voxel_generator, Voxels.Generation.AbstractVoxelGenerator)
+        error("Unexpected output of voxel scene compilation: ", voxel_generator)
+    end
     voxel_scene = Voxels.Scene(v3i(64, 64, 64), voxel_generator,
                                map(kvp -> kvp[2],
                                    sort!(collect(layers_by_id), by=kvp->kvp[1])),
@@ -403,7 +407,7 @@ function render(world::World, assets::Assets)
         sun_view_min = min(sun_view_min, point)
         sun_view_max = max(sun_view_max, point)
     end
-    mat_sun_proj::fmat4 = m4_ortho(sun_view_min, sun_view_max)
+    mat_sun_proj::fmat4 = m4_ortho(Box(min=sun_view_min, max=sun_view_max))
     world.sun_viewproj = m_combine(mat_sun_view, mat_sun_proj)
     mat_sun_world_to_texel = m_combine(
         world.sun_viewproj,

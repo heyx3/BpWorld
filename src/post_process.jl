@@ -22,8 +22,8 @@ function render(view::PostProcess, window::GLFW.Window, assets::Assets, world::W
     resources::Service_BasicGraphics = service_BasicGraphics()
 
     target_activate(nothing)
-    render_clear(context, GL.Ptr_Target(), v4f(1, 0, 1, 0))
-    render_clear(context, GL.Ptr_Target(), @f32(1))
+    clear_screen(v4f(1, 0, 1, 0))
+    clear_screen(@f32(1))
 
     prepare_program_lighting(assets,
         world.target_tex_depth, world.target_tex_color,
@@ -35,7 +35,7 @@ function render(view::PostProcess, window::GLFW.Window, assets::Assets, world::W
     view_activate(get_view(world.target_tex_color, G_BUFFER_SAMPLER))
     view_activate(get_view(world.target_tex_normals, G_BUFFER_SAMPLER))
     view_activate(get_view(world.target_tex_surface, G_BUFFER_SAMPLER))
-    GL.render_mesh(context, resources.screen_triangle, assets.prog_lighting)
+    render_mesh(resources.screen_triangle, assets.prog_lighting)
     view_deactivate(get_view(world.target_tex_shadowmap))
     view_deactivate(get_view(world.target_tex_depth, G_BUFFER_SAMPLER))
     view_deactivate(get_view(world.target_tex_color, G_BUFFER_SAMPLER))

@@ -368,7 +368,7 @@ function dsl_copy(src::VoxelBox, changes::Dict{Any, Pair{Symbol, Any}}, dsl_stat
                 elseif rhs_value isa Real
                     rhs_value = v3f(rhs_value, rhs_value, rhs_value)
                 end
-                new_value = dynamic_modify(modification, min_inclusive(dest[].area), rhs_value)
+                new_value = compute_op(modification, min_inclusive(dest[].area), rhs_value)
 
                 # Set the min, leaving max unchanged.
                 dest[] = Setfield.setproperties(dest[], (
@@ -393,7 +393,7 @@ function dsl_copy(src::VoxelBox, changes::Dict{Any, Pair{Symbol, Any}}, dsl_stat
                 elseif rhs_value isa Real
                     rhs_value = v3f(rhs_value, rhs_value, rhs_value)
                 end
-                new_value = dynamic_modify(modification, max_inclusive(dest[].area), rhs_value)
+                new_value = compute_op(modification, max_inclusive(dest[].area), rhs_value)
 
                 # Set the max, leaving min unchanged.
                 dest[] = Setfield.setproperties(dest[], (
@@ -418,7 +418,7 @@ function dsl_copy(src::VoxelBox, changes::Dict{Any, Pair{Symbol, Any}}, dsl_stat
                 elseif rhs_value isa Real
                     rhs_value = v3f(rhs_value, rhs_value, rhs_value)
                 end
-                new_value = dynamic_modify(modification, center(dest[].area), rhs_value)
+                new_value = compute_op(modification, center(dest[].area), rhs_value)
 
                 # Set the center, leaving the size unchanged.
                 dest[] = Setfield.setproperties(dest[], (
@@ -443,7 +443,7 @@ function dsl_copy(src::VoxelBox, changes::Dict{Any, Pair{Symbol, Any}}, dsl_stat
                 elseif rhs_value isa Real
                     rhs_value = v3f(rhs_value, rhs_value, rhs_value)
                 end
-                new_value = dynamic_modify(modification, size(dest[].area), rhs_value)
+                new_value = compute_op(modification, size(dest[].area), rhs_value)
 
                 # Set the size, leaving the center unchanged.
                 dest[] = Setfield.setproperties(dest[], (
