@@ -1,7 +1,4 @@
-#########################################
-##   LayerData -- on-disk voxel layer  ##
-#########################################
-
+"The data definition for a specific texture file"
 struct LayerTexture
     # This texture's name in the shader.
     # E.x. if you use "tex_albedo", then the shader
@@ -38,8 +35,8 @@ end
 StructTypes.StructType(::Type{LayerTexture}) = StructTypes.UnorderedStruct()
 
 
-"The data definition for a specific voxel material."
-struct LayerData
+"The data definition for a specific voxel layer"
+struct LayerDefinition
     # The fragment shader file.
     # The vertex shader will always be "voxels/meshed.vert"
     frag_shader_path::AbstractString
@@ -56,7 +53,7 @@ struct LayerData
     preprocessor_defines::Dict{AbstractString, AbstractString}
 
     # This constructor handles 'nothing' values for each field, for StructTypes deserialization.
-    LayerData(frag_shader_path, textures, preprocessor_defines) = new(
+    LayerDefinition(frag_shader_path, textures, preprocessor_defines) = new(
         isnothing(frag_shader_path) ?
             error("Field 'frag_shader_path' must be set for a voxel asset!") :
             frag_shader_path,
@@ -68,6 +65,5 @@ struct LayerData
             preprocessor_defines
     )
 end
+StructTypes.StructType(::Type{LayerDefinition}) = StructTypes.UnorderedStruct()
 
-# Serialization:
-StructTypes.StructType(::Type{LayerData}) = StructTypes.UnorderedStruct()

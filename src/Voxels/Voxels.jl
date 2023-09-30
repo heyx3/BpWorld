@@ -24,15 +24,13 @@ module Voxels
     include("Generation/Generation.jl")
 
     # Compile files.
-    include("layer.jl")
     include("renderer.jl")
     include("renderer_cache.jl")
-    include("meshing.jl")
     include("scene.jl")
 
 
     export VoxelGrid, ConcreteVoxelGrid,
-           VoxelVertex, unpack_vertex, voxel_vertex_layout,
+           VoxelLayerVertex, unpack_vertex, voxel_vertex_layout,
            VoxelMesher, calculate_mesh,
            LayerMaterial, CachedRenderer, RendererCache,
            check_disk_modifications!, get_material!,

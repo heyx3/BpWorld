@@ -15,10 +15,10 @@ Provides 'depth' (for depth-prepass) and 'deferred' (for G-buffer pass) versions
 struct LayerMaterial
     depth_preview::Program
     deferred_preview::Program
-    
+
     depth_meshed::Program
     deferred_meshed::Program
-    
+
     # Each texture is mapped to its uniform name.
     textures::Dict{AbstractString, Texture}
 end
@@ -47,18 +47,18 @@ function LayerMaterial(data::LayerData)::LayerMaterial
     try
         # Vertex/geometry shaders depend on whether the layer is meshed yet.
         vert_preview = """
-            #include <$BUILTIN_SHADERS_INCLUDE_PATH/utils.shader>
-            #include <$BUILTIN_SHADERS_INCLUDE_PATH/buffers.shader>
+            #include <$BUILTIN_SHADERS_INCLUDE_PATH/utils/functions.shader>
+            #include <$BUILTIN_SHADERS_INCLUDE_PATH/utils/buffers.shader>
             #include <$BUILTIN_SHADERS_INCLUDE_PATH/vert_geom/preview.vert>
         """
         vert_meshed = """
-            #include <$BUILTIN_SHADERS_INCLUDE_PATH/utils.shader>
-            #include <$BUILTIN_SHADERS_INCLUDE_PATH/buffers.shader>
+            #include <$BUILTIN_SHADERS_INCLUDE_PATH/utils/functions.shader>
+            #include <$BUILTIN_SHADERS_INCLUDE_PATH/utils/buffers.shader>
             #include <$BUILTIN_SHADERS_INCLUDE_PATH/vert_geom/meshed.vert>
         """
         geom_preview = """
-            #include <$BUILTIN_SHADERS_INCLUDE_PATH/utils.shader>
-            #include <$BUILTIN_SHADERS_INCLUDE_PATH/buffers.shader>
+            #include <$BUILTIN_SHADERS_INCLUDE_PATH/utils/functions.shader>
+            #include <$BUILTIN_SHADERS_INCLUDE_PATH/utils/buffers.shader>
             #include <$BUILTIN_SHADERS_INCLUDE_PATH/vert_geom/preview.geom>
         """
 
@@ -74,8 +74,9 @@ function LayerMaterial(data::LayerData)::LayerMaterial
 
         # Fragment shaders depend on which pass is being rendered.
         frag_deferred = """
-            #include <$BUILTIN_SHADERS_INCLUDE_PATH/utils.shader>
-            #include <$BUILTIN_SHADERS_INCLUDE_PATH/buffers.shader>
+            #include <$BUILTIN_SHADERS_INCLUDE_PATH/utils/functions.shader>
+            #include <$BUILTIN_SHADERS_INCLUDE_PATH/utils/buffers.shader>
+            #include <$BUILTIN_SHADERS_INCLUDE_PATH/utils/noise.shader>
             #include <$BUILTIN_SHADERS_INCLUDE_PATH/frag/input.shader>
             #include <$BUILTIN_SHADERS_INCLUDE_PATH/frag/output_deferred.shader>
 
@@ -85,8 +86,9 @@ function LayerMaterial(data::LayerData)::LayerMaterial
             $fragment_shader_body
         """
         frag_depth = """
-            #include <$BUILTIN_SHADERS_INCLUDE_PATH/utils.shader>
-            #include <$BUILTIN_SHADERS_INCLUDE_PATH/buffers.shader>
+            #include <$BUILTIN_SHADERS_INCLUDE_PATH/utils/functions.shader>
+            #include <$BUILTIN_SHADERS_INCLUDE_PATH/utils/buffers.shader>
+            #include <$BUILTIN_SHADERS_INCLUDE_PATH/utils/noise.shader>
             #include <$BUILTIN_SHADERS_INCLUDE_PATH/frag/input.shader>
             #include <$BUILTIN_SHADERS_INCLUDE_PATH/frag/output_depth.shader>
 

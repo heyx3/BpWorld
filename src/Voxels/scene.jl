@@ -111,7 +111,7 @@ function update(scene::Scene, delta_seconds::Float32)
                     inds = Buffer(false, @view scene.mesher.index_buffer[1:scene.mesher.n_indices])
                     mesh = Mesh(
                         PrimitiveTypes.triangle,
-                        [ VertexDataSource(verts, sizeof(VoxelVertex)) ],
+                        [ VertexDataSource(verts, sizeof(VoxelLayerVertex)) ],
                         voxel_vertex_layout(1),
                         MeshIndexData(inds, eltype(scene.mesher.index_buffer))
                     )

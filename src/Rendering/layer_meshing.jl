@@ -1,8 +1,12 @@
+#####################
+##   Vertex Data   ##
+#####################
+
 "
 A CPU representation of the data associated with each vertex of a voxel mesh.
 Note that this internal representation uses 0-based counting.
 "
-struct VoxelVertex
+struct VoxelLayerVertex
     # The vertex position is given as a voxel index; it will sit at that voxel's min corner.
     # For simplicity, the voxel grid starts at 0 and so the positions are unsigned.
 
@@ -13,7 +17,7 @@ struct VoxelVertex
 
     data::Vec{3, UInt32}
 end
-@inline function VoxelVertex(grid_idx::Vec3{<:Integer}, face_axis::Integer, face_dir::Signed)
+@inline function VoxelLayerVertex(grid_idx::Vec3{<:Integer}, face_axis::Integer, face_dir::Signed)
     @bpworld_assert(all(grid_idx >= 0), "Given a negative grid position!")
     @bpworld_assert(all(grid_idx < (typemax(UInt32) >> 1)),
                     "Grid position is too big to fit into the packed data format! ", grid_idx)
@@ -26,16 +30,16 @@ end
                               face_bits >> 1,
                               dir_bits)
 
-    return VoxelVertex(Vec{3, UInt32}() do i::Int
+    return VoxelLayerVertex(Vec{3, UInt32}() do i::Int
         UInt32(grid_idx[i]) | (UInt32(bits[i]) << 31)
     end)
 end
-unpack_vertex(v::VoxelVertex) = (
+unpack_vertex(v::VoxelLayerVertex) = (
     voxel_idx = map(u -> u & 0x7fFFffFF, v.data),
     face_axis = Int((v.data[1] >> 31) | ((v.data[2] >> 31) << 1)),
     face_dir = (Int(v.data[3] >> 31) * 2) - 1
 )
-Base.show(io::IO, v::VoxelVertex) = let unpacked = unpack_vertex(v)
+Base.show(io::IO, v::VoxelLayerVertex) = let unpacked = unpack_vertex(v)
     print(io,
         "{min=", v3i(unpacked.voxel_idx),
         "  face=", ('-', '+')[1 + ((unpacked.face_dir + 1) ÷ 2)],
@@ -44,8 +48,8 @@ Base.show(io::IO, v::VoxelVertex) = let unpacked = unpack_vertex(v)
 end
 
 "
-Informtion about `VoxelVertex`, to be handed to the GPU.
-Needs to be told which buffer the `VoxelVertex` data is coming from
+Informtion about `VoxelLayerVertex`, to be handed to the GPU.
+Needs to be told which buffer the `VoxelLayerVertex` data is coming from
     (given as its index in the `Mesh` object).
 "
 voxel_vertex_layout(buffer_idx::Int = 1) = [
@@ -53,15 +57,21 @@ voxel_vertex_layout(buffer_idx::Int = 1) = [
 ]
 
 
+################################
+##   Meshing Task/Algorithm   ##
+################################
+
+#TODO: Flag for 'sortable' mode, which never merges faces in a way that might screw up transparent triangle sorting.
+
 "A set of buffers that can be used to mesh voxels."
 mutable struct VoxelMesher
-    vertex_buffer::Vector{VoxelVertex}
+    vertex_buffer::Vector{VoxelLayerVertex}
     index_buffer::Vector{UInt32}
     @atomic n_vertices::Int
     @atomic n_indices::Int
 end
 VoxelMesher() = VoxelMesher(
-    Vector{VoxelVertex}(), Vector{UInt32}(),
+    Vector{VoxelLayerVertex}(), Vector{UInt32}(),
     0, 0
 )
 
@@ -79,7 +89,7 @@ function calculate_mesh(grid::VoxelGrid, layer::UInt8, mesher::VoxelMesher)
     resize!(mesher.vertex_buffer, n_worst_case_faces * 4)
     resize!(mesher.index_buffer, n_worst_case_faces * 6)
     println("Max buffer size is updated to ",
-            Base.format_bytes(sizeof(VoxelVertex) * length(mesher.vertex_buffer)), " for vertices and ",
+            Base.format_bytes(sizeof(VoxelLayerVertex) * length(mesher.vertex_buffer)), " for vertices and ",
             Base.format_bytes(sizeof(UInt32) * length(mesher.index_buffer)), " for indices")
     @bpworld_assert(length(mesher.vertex_buffer) <= typemax(UInt32),
                     "Holy crap that's a lot of vertices")
@@ -91,6 +101,7 @@ function calculate_mesh(grid::VoxelGrid, layer::UInt8, mesher::VoxelMesher)
         axis2::Int = mod1(axis+1, 3)
         axis3::Int = mod1(axis+2, 3)
 
+        # For each voxel on this slice...
         min_plane_idx = one(v2i)
         max_plane_idx = v2i(@inbounds grid_size.data[axis2],
                             @inbounds grid_size.data[axis3])
@@ -102,16 +113,18 @@ function calculate_mesh(grid::VoxelGrid, layer::UInt8, mesher::VoxelMesher)
                 @set! voxel_idx[axis3] = plane_idx.y
             end
 
-            # For each filled voxel, draw its boundary with empty neighbors.
+            # Look for this layer's voxels.
             if (grid[voxel_idx]) != layer
                 continue
             end
 
+            # Get the neighboring voxel, if it exists.
             neighbor_voxel_idx = voxel_idx
             @inbounds(@set! neighbor_voxel_idx[axis] += dir)
-
             is_on_edge::Bool = !in(neighbor_voxel_idx, 1:grid_size)
             is_neighbor_free::Bool = is_on_edge || (@inbounds(grid[neighbor_voxel_idx]) == EMPTY_VOXEL)
+
+            # If the neighbor
             if is_neighbor_free
                 a = voxel_idx - 1 # Make it 0-based to start at the origin
                 @inbounds(@set! a[axis] += ((dir + 1) ÷ 2))
@@ -127,7 +140,7 @@ function calculate_mesh(grid::VoxelGrid, layer::UInt8, mesher::VoxelMesher)
                 @bpworld_assert(last_vert_idx <= length(mesher.vertex_buffer))
                 @inbounds setindex!.(
                     Ref(mesher.vertex_buffer),
-                    VoxelVertex.(
+                    VoxelLayerVertex.(
                         (a, b, c, d),
                         Ref(axis), Ref(dir)
                     ),

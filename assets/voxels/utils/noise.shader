@@ -211,14 +211,14 @@ float perlinNoise(vec2 p, float seed)
 bool getWorleyPoint(float cell, float chanceOfPoint, float seed, out float pos)
 {
     vec2 rng = hashTo2(vec2(cell * 450.0, seed)).xy;
-    
+
     pos = cell + rng.x;
     return (rng.y < chanceOfPoint);
 }
 bool getWorleyPoint(vec2 cell, float chanceOfPoint, float seed, out vec2 pos)
 {
     vec3 rng = hashTo3(vec3(cell, seed) * 450.0).xyz;
-    
+
     pos = cell + rng.xy;
     return (rng.z < chanceOfPoint);
 }
@@ -226,9 +226,9 @@ bool getWorleyPoint(vec2 cell, float chanceOfPoint, float seed, out vec2 pos)
 //Generates worley-noise points that might influence the given position.
 //See the below functions for common use-cases.
 void worleyPoints(float x, float chanceOfPoint, float seed,
-                out int outNPoints, out float outPoints[3]);
+                  out int outNPoints, out float outPoints[3]);
 void worleyPoints(vec2 x, float chanceOfPoint, float seed,
-                out int outNPoints, out float outPoints[3]);
+                  out int outNPoints, out float outPoints[3]);
 //Implementation below:
 #define IMPL_WORLEY_START(T)                                    \
     T xCenter = floor(x),                                       \
