@@ -4,7 +4,7 @@ using Bplus
 using Bplus.Utilities, Bplus.Math
 
 using BpWorld
-using BpWorld.Utils, BpWorld.Voxels, BpWorld.Voxels.Generation
+using BpWorld.Utils, BpWorld.Voxels, BpWorld.Voxels.Generation, BpWorld.Rendering
 
 
 # Implement equality for voxel generators, for testing purposes.
@@ -399,4 +399,8 @@ end
     end
 
     #TODO: Test that voxels are generated correctly.
+
+    @testset "AbstractLayerDataLightingModel serialization" begin
+        println("#TODO: Implement")
+    end
 end

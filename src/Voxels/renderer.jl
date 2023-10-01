@@ -67,7 +67,7 @@ function LayerMaterial(data::LayerData)::LayerMaterial
             for (name, value) in data.preprocessor_defines
                 print(io, "#define ", name, " ", value, "\n")
             end
-            for tex_data::LayerTexture in values(data.textures)
+            for tex_data::LayerDataTexture in values(data.textures)
                 print(io, "uniform sampler2D ", tex_data.code_name, ";\n")
             end
         end

@@ -47,11 +47,7 @@ Base.show(io::IO, v::VoxelLayerVertex) = let unpacked = unpack_vertex(v)
         "}")
 end
 
-"
-Informtion about `VoxelLayerVertex`, to be handed to the GPU.
-Needs to be told which buffer the `VoxelLayerVertex` data is coming from
-    (given as its index in the `Mesh` object).
-"
+"Information for OpenGL about how this vertex data gets pulled from a buffer into the vertex shader"
 voxel_vertex_layout(buffer_idx::Int = 1) = [
     VertexAttribute(buffer_idx, 0, VSInput(v3u))
 ]
@@ -124,7 +120,8 @@ function calculate_mesh(grid::VoxelGrid, layer::UInt8, mesher::VoxelMesher)
             is_on_edge::Bool = !in(neighbor_voxel_idx, 1:grid_size)
             is_neighbor_free::Bool = is_on_edge || (@inbounds(grid[neighbor_voxel_idx]) == EMPTY_VOXEL)
 
-            # If the neighbor
+            # If the neighbor voxel is empty (or transparent), this is a visible face.
+            println("#TODO: Also ignore transparent neighbors")
             if is_neighbor_free
                 a = voxel_idx - 1 # Make it 0-based to start at the origin
                 @inbounds(@set! a[axis] += ((dir + 1) ÷ 2))
@@ -186,4 +183,35 @@ function calculate_mesh(grid::VoxelGrid, layer::UInt8, mesher::VoxelMesher)
     end
 
     return nothing
+end
+
+
+########################
+##   Meshing Result   ##
+########################
+
+"OpenGL resources for a single layer's pre-calculated mesh"
+mutable struct LayerMesh
+    buffer_mesh_verts::Bplus.GL.Buffer
+    buffer_mesh_inds::Bplus.GL.Buffer
+    mesh::Bplus.GL.Mesh
+end
+function LayerMesh(finished_mesher::VoxelMesher)
+    verts = Buffer(false, @view finished_mesher.vertex_buffer[1:@atomic(finished_mesher.n_vertices)])
+    inds = Buffer(false, @view finished_mesher.index_buffer[1:@atomic(finished_mesher.n_indices)])
+    mesh = Mesh(
+        PrimitiveTypes.triangle,
+        [ VertexDataSource(verts, sizeof(VoxelLayerVertex)) ],
+        voxel_vertex_layout(1),
+        MeshIndexData(inds, eltype(finished_mesher.index_buffer))
+    )
+    return LayerMesh(verts, inds, mesh)
+end
+
+function Base.close(lm::LayerMesh)
+    for field in getfield.(Ref(lm), fieldnames(typeof(lm)))
+        if field isa Bplus.GL.AbstractResource
+            close(field)
+        end
+    end
 end

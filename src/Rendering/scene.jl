@@ -7,4 +7,3 @@ mutable struct Scene
 end
 
 #TODO: Tick scene
-#TODO: Render scene from Viewport

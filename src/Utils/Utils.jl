@@ -3,18 +3,23 @@ module Utils
 using Setfield, Base.Threads,
       Suppressor, StructTypes, JSON3, CSyntax
 using GLFW, ModernGLbp, CImGui,
-      ImageIO, FileIO, ColorTypes, FixedPointNumbers, ImageTransformations
+      ImageIO, FileIO, ColorTypes, FixedPointNumbers, ImageTransformations,
+      MacroTools
 using Bplus,
       Bplus.Utilities, Bplus.Math, Bplus.GL,
       Bplus.Helpers, Bplus.SceneTree, Bplus.Input
 #
 
+# Allows the creation of multiple callbacks to run on program start, via the global list 'RUN_ON_INIT'
 @decentralized_module_init
 
+# Defines @bpworld_assert and @bpworld_debug.
+# Recompile this project for debug mode by executing `BpWorld.Utils.bpworld_asserts_enabled() = true` at global scope.
+@make_toggleable_asserts bpworld_
 
-# Paths need to be set up at runtime.
-# A function below will initialize them dynamically.
 
+# File paths need to be configured at runtime.
+# Otherwise deployed builds will try to use developers' file paths!
 "The root path of this project"
 ROOT_PATH::String = ""
 "The path where all scene files should be placed"
@@ -28,8 +33,10 @@ push!(RUN_ON_INIT, () -> begin
     path_base = pwd()
 
     global ROOT_PATH
+    # In standalone builds, back out of the 'bin' folder.
     if isfile(joinpath(path_base, "BpWorld.exe"))
         ROOT_PATH = joinpath(path_base, "..")
+    # In the repo, sit in the project folder.
     elseif isfile(joinpath(path_base, "src/BpWorld.jl"))
         ROOT_PATH = path_base
     else
@@ -38,8 +45,12 @@ push!(RUN_ON_INIT, () -> begin
                 "We aren't in a valid location!")
     end
     ROOT_PATH = normpath(ROOT_PATH)
-
     println(stderr, "Using root path {", ROOT_PATH, "}")
+
+    # Ideally in deployment we'd respect OS conventions
+    #    about where to put temp files vs save files vs installed files,
+    #    but I don't even know if that information is realistically gettable through Julia.
+    # So just keep everything together in the build folder.
     global SCENES_PATH = joinpath(ROOT_PATH, "scenes")
     global VOXEL_LAYERS_PATH = joinpath(ROOT_PATH, "layers")
     global ASSETS_PATH = joinpath(ROOT_PATH, "assets")
@@ -48,11 +59,6 @@ end)
 
 "The extension (no period) for scene files"
 const SCENES_EXTENSION = "scene"
-
-
-"Asserts for this specific project: `@bpworld_assert`, `@bpworld_debug`."
-@make_toggleable_asserts bpworld_
-@assert bpworld_asserts_enabled() == false
 
 "
 Removes a type declaration.
@@ -64,9 +70,6 @@ macro omit_type(var_decl)
             "Expected a typed variable declaration, got: $var_decl")
     return esc(var_decl.args[1])
 end
-
-"A generator that injects a value in between each element of another iterator"
-@inline intersperse(iter, separator) = Iterators.flatten(Iterators.zip(iter, Iterators.repeated(separator)))
 
 
 "Checks and prints any messages/errors from OpenGL. Does nothing in release mode."
@@ -89,9 +92,43 @@ include("shaders.jl")
 include("textures.jl")
 
 
+"
+Simplifies a common design pattern for data containing B+ GL resources.
+Defines `Base.close()` for a type to iterate through its fields, and calling `close()` on any resources.
+
+You may also provide extra iterables of objects to call `close()` on.
+
+Example:
+
+````
+@close_gl_resources(x::MyAssets, values(x.texture_lookup), x.my_file_handles)
+````
+"
+macro close_gl_resources(object, iterators...)
+    if !@capture(object, name_Symbol::type_)
+        error("Expected first argument to be in the form 'name::Type'. Got: ", object)
+    end
+    object = esc(object)
+    name = esc(name)
+    type = esc(type)
+    iterators = esc.(iterators)
+    return :(
+        function Base.close($object)
+            resources = Iterators.flatten(tuple(
+                Iterators.filter(field -> field isa $(Bplus.GL.AbstractResource),
+                                 getfield.(Ref($name), fieldnames($type))),
+                $(iterators...)
+            ))
+            for r in resources
+                close(r)
+            end
+        end
+    )
+end
+
+
 export @bpworld_assert, @bpworld_debug,
-       @omit_type,
-       intersperse,
+       @omit_type, @close_gl_resources,
        check_gl_logs,
        ROOT_PATH,
        VOXEL_LAYERS_PATH, ASSETS_PATH, SCENES_PATH,

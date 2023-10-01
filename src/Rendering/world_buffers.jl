@@ -57,7 +57,7 @@ end
 ########################
 
 mutable struct SceneRenderBuffers
-    #TOOD: Try using one big buffer with different byte ranges
+    #TOOD: Try using one big buffer with different byte ranges; B+ doesn't have its own test for that case
     buf_fog::Bplus.GL.Buffer
     buf_viewport::Bplus.GL.Buffer
     buf_sun::Bplus.GL.Buffer
