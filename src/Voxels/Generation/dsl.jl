@@ -481,7 +481,7 @@ end
 # The output is an array of the returned values; iterations that return `nothing` are dropped.
 #TODO: Double-check that VecI ranges work as expected.
 function dsl_block(::Val{:repeat}, args, body, dsl_state::DslState)
-    return dsl_context_block(dsl_state, "repeat(", intersperse(args, ", ")..., ")") do
+    return dsl_context_block(dsl_state, "repeat(", iter_join(args, ", ")..., ")") do
         # Get the single argument representing the range.
         # The argument must be a colon operator (like `1:10`).
         if length(args) != 1 || !Base.is_expr(args[1], :call) || args[1].args[1] != :(:)
