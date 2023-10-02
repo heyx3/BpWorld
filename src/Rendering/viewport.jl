@@ -20,6 +20,3 @@ mutable struct Viewport
     target_previous::ViewportTarget
 end
 @close_gl_resources(v::Viewport, (v.target_current, v.target_previous))
-
-#TODO: Constructor, given a resolution
-#TODO: Resize function

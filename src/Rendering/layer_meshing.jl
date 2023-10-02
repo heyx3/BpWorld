@@ -57,8 +57,6 @@ voxel_vertex_layout(buffer_idx::Int = 1) = [
 ##   Meshing Task/Algorithm   ##
 ################################
 
-#TODO: Flag for 'sortable' mode, which never merges faces in a way that might screw up transparent triangle sorting.
-
 "A set of buffers that can be used to mesh voxels."
 mutable struct VoxelMesher
     vertex_buffer::Vector{VoxelLayerVertex}
@@ -207,11 +205,4 @@ function LayerMesh(finished_mesher::VoxelMesher)
     )
     return LayerMesh(verts, inds, mesh)
 end
-
-function Base.close(lm::LayerMesh)
-    for field in getfield.(Ref(lm), fieldnames(typeof(lm)))
-        if field isa Bplus.GL.AbstractResource
-            close(field)
-        end
-    end
-end
+@close_gl_resources(lm::LayerMesh)

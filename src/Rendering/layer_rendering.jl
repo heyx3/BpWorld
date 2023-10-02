@@ -1,13 +1,29 @@
+###############
+##   Layer   ##
+###############
+
+mutable struct Layer
+    definition_file_path::String # `LayerDefinition` is retrieved through a cache
+    meshing::Optional{LayerMesh}
+end
+@close_gl_resources(l::Layer)
+
+
 ###############################
 ##   AbstractLayerRenderer   ##
 ###############################
 
+##  Types  ##
+
 "
 The current state of a lighting model as represented by some type of `AbstractLayerDataLightingModel`.
 Only one exists for each type of lighting model, and it is responsible
-    for rendering *all* layers using that model, to allow for funky techniques like OIT.
+    for rendering *all* layers using that model.
+This architecture allows for funky techniques like OIT.
 
-If your renderer has some data that changes based on viewport,
+For data associated with a specific layer, define a custom `AbstractLayerDataLayer`.
+
+If your renderer has data associated with a specific Viewport,
     define a custom `AbstractLayerRendererViewport`.
 "
 abstract type AbstractLayerRenderer end
@@ -15,10 +31,17 @@ abstract type AbstractLayerRenderer end
 
 "
 Any assets of an `AbstractLayerRenderer` that are associated with a specific view,
-    such as render targets of a certain resolution, can go here
+    such as intermediary render targets, can go here
 "
 abstract type AbstractLayerRendererViewport end
 @close_gl_resources(v::AbstractLayerRendererViewport)
+
+"
+Any assets of an `AbstractLayerRenderer` that are associated with a specific layer,
+    such as its shaders, can go here
+"
+abstract type AbstractLayerRendererLayer end
+@close_gl_resources(l::AbstractLayerRendererLayer)
 
 
 ##  Lifetime management  ##
@@ -30,40 +53,40 @@ function layer_renderer_init(T::Type{<:AbstractLayerDataLightingModel},
     error("layer_renderer_init() not defined for ", T)
 end
 
+"Creates a layer renderer's assets for a specific viewport"
 function layer_renderer_init_viewport(r::AbstractLayerRenderer,
                                       viewport::Viewport,
                                       scene
                                      )::AbstractLayerRendererViewport
     error("layer_renderer_init_viewport() not defined for ", typeof(r))
 end
-
-# Default close() behavior simply destroys all fields that are B+ Resources.
-function Base.close(r::AbstractLayerRenderer)
-    for field in getfield.(Ref(r), fieldnames(typeof(r)))
-        if field isa Bplus.GL.AbstractResource
-            close(field)
-        end
-    end
-end
-function Base.close(rv::AbstractLayerRendererViewport)
-    for field in getfield.(Ref(rv), fieldnames(typeof(rv)))
-        if field isa Bplus.GL.AbstractResource
-            close(field)
-        end
-    end
+"Called just before calling `close()` on a viewport's specific assets"
+function layer_renderer_close_viewport(r::AbstractLayerRenderer,
+                                       v::Viewport,
+                                       rv::AbstractLayerRendererViewport,
+                                       scene)
+    error("layer_renderer_close_viewport(::", typeof(r), ") not implemented")
 end
 
-"
-Updates this renderer.
+"Creates a layer renderer's assets for a specific layer"
+function layer_renderer_init_layer(r::AbstractLayerRenderer,
+                                   layer::Layer,
+                                   scene
+                                  )::AbstractLayerRendererLayer
+    error("layer_renderer_init_layer() not defined for ", typeof(r))
+end
+"Called just before calling `close()` on a layer's specific assets"
+function layer_renderer_close_layer(r::AbstractLayerRenderer,
+                                    v::Viewport,
+                                    rv::AbstractLayerRendererViewport,
+                                    scene)
+    error("layer_renderer_close_layer(::", typeof(r), ") not implemented")
+end
 
-Note that the set of `applicable_layers` can change without warning from frame to frame,
-    after the voxel scene is hot-reloaded from file changes,
-    so don't assume the collection is static.
-"
 function layer_renderer_tick(r::AbstractLayerRenderer,
-                             viewport_data::Dict{Viewport, <:AbstractLayerRendererViewport}
+                             viewports::Dict{Viewport, <:AbstractLayerRendererViewport},
+                             layers::Dict{Int, <:AbstractLayerRendererLayer},
                              scene,
-                             applicable_layers::Vector{Int},
                              delta_seconds::Float32)
     error("layer_renderer_tick(::", typeof(r), ") not implemented")
 end
@@ -80,27 +103,8 @@ layer_renderer_reads_target(r::AbstractLayerRenderer)::Bool = error("layer_rende
 function layer_renderer_execute(r::AbstractLayerRenderer,
                                 viewport::Viewport,
                                 view_state::AbstractLayerRendererViewport,
+                                layers::Dict{Int, <:AbstractLayerRendererLayer},
                                 scene,
                                 applicable_layers::Vector{Int})
     error("layer_renderer_execute(::", typeof(r), ") not implemented")
-end
-
-
-###############
-##   Layer   ##
-###############
-
-println("#TODO: Layer must use something like RendererCache")
-mutable struct Layer
-    renderer::AbstractLayerRenderer
-
-
-    # Mapped by uniform name
-    textures::Dict{AbstractString, Texture}
-end
-
-function Base.close(l::Layer)
-    close(l.renderer)
-    close.(values(m.textures))
-    empty!(m.textures)
 end
