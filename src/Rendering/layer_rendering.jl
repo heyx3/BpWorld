@@ -1,14 +1,3 @@
-###############
-##   Layer   ##
-###############
-
-mutable struct Layer
-    definition_file_path::String # `LayerDefinition` is retrieved through a cache
-    meshing::Optional{LayerMesh}
-end
-@close_gl_resources(l::Layer)
-
-
 ###############################
 ##   AbstractLayerRenderer   ##
 ###############################
@@ -70,7 +59,7 @@ end
 
 "Creates a layer renderer's assets for a specific layer"
 function layer_renderer_init_layer(r::AbstractLayerRenderer,
-                                   layer::Layer,
+                                   layer_data::LayerDefinition,
                                    scene
                                   )::AbstractLayerRendererLayer
     error("layer_renderer_init_layer() not defined for ", typeof(r))
@@ -82,6 +71,8 @@ function layer_renderer_close_layer(r::AbstractLayerRenderer,
                                     scene)
     error("layer_renderer_close_layer(::", typeof(r), ") not implemented")
 end
+
+#TODO: Layer renderer should handle the output of the meshing algorithm.
 
 function layer_renderer_tick(r::AbstractLayerRenderer,
                              viewports::Dict{Viewport, <:AbstractLayerRendererViewport},

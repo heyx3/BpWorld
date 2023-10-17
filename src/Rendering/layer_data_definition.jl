@@ -13,27 +13,12 @@ struct LayerDataTexture
     #    repeat, linear filtering, mipmaps, and anisotropy based on graphics settings.
     sampler::Optional{TexSampler{2}}
 
-    channels::E_SimpleFormatComponents
-    use_mips::Bool
-
-    LayerDataTexture(code_name::String
-                 ;
-                 sampler::Optional{TexSampler{2}} = nothing,
-                 channels::E_SimpleFormatComponents = SimpleFormatComponents.RGBA,
-                 use_mips::Bool = true
-                ) = new(code_name, sampler, channels, use_mips)
-    # This constructor handles 'nothing' values for each field, for StructTypes deserialization.
-    LayerDataTexture(code_name, sampler, channels, use_mips) = new(
+    # The constructor must handle 'nothing' values for each field, for StructTypes deserialization.
+    LayerDataTexture(code_name, sampler) = new(
         isnothing(code_name) ?
             error("Field 'code_name' must be provided for a texture") :
             code_name,
-        sampler,
-        isnothing(channels) ?
-            SimpleFormatComponents.RGBA :
-            channels,
-        isnothing(use_mips) ?
-            true :
-            use_mips
+        sampler
     )
 end
 StructTypes.StructType(::Type{LayerDataTexture}) = StructTypes.UnorderedStruct()
@@ -90,9 +75,9 @@ function StructTypes.construct(T::Type{<:AbstractLayerDataLightingModel}, data_d
 end
 
 
-###############
-##   Layer   ##
-###############
+#########################
+##   LayerDefinition   ##
+#########################
 
 "The data definition for a specific voxel layer"
 struct LayerDefinition
@@ -114,7 +99,7 @@ struct LayerDefinition
     #TODO: If given an array of strings, turn them into multiple lines connected by backslash
     preprocessor_defines::Dict{AbstractString, AbstractString}
 
-    # This constructor handles 'nothing' values for each field, for StructTypes deserialization.
+    # The constructor must handle 'nothing' values for each field, for StructTypes deserialization.
     LayerDefinition(frag_shader_path, lighting_model, textures, preprocessor_defines) = new(
         isnothing(frag_shader_path) ?
             error("Field 'frag_shader_path' must be set for a voxel layer!") :

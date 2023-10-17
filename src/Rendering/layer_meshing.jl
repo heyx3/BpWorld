@@ -184,6 +184,91 @@ function calculate_mesh(grid::VoxelGrid, layer::UInt8, mesher::VoxelMesher)
 end
 
 
+"Manages a separate Task which generates the voxel grid, then meshes each layer"
+mutable struct VoxelMesherTask
+    buffers::VoxelMesher
+    grid::VoxelGrid
+    n_layers::Int
+
+    is_finished::Bool
+    task::Task
+
+    channel_to_main::Channel{Int} # Worker thread sends back 0 after computing the voxel grid,
+                                  #    then the index of each meshed layer
+                                  #    as it's completed.
+    channel_to_worker::Channel{Bool} # Main thread sends an acknowledgement
+                                     #    of each meshed layer after uploading it.
+                                     # The initial 0 value shouldn't be acknowledged.
+                                     # Send 'true' to acknowledge, 'false' to kill the task.
+end
+
+function VoxelMesherTask(grid_size::v3i,
+                         grid_generator::Voxels.Generation.AbstractVoxelGenerator,
+                         n_layers::Int,
+                         buffers::VoxelMesher = VoxelMesher())
+    grid::VoxelGrid = fill(zero(VoxelElement), grid_size...)
+
+    channel_to_main = Channel{Int}(2)
+    channel_to_worker = Channel{Bool}(2)
+    task = @async begin
+        Generation.generate!(grid, grid_generator, true)
+        put!(channel_to_main, 0)
+
+        for i in 1:n_layers
+            #TODO: Use one big buffer for the voxel data, signal back to the main thread after every slice
+            calculate_mesh(grid, UInt8(i), buffers)
+            put!(channel_to_main, i)
+
+            should_continue::Bool = take!(channel_to_worker)
+            if !should_continue
+                break
+            end
+        end
+    end
+
+    return VoxelMesherTask(buffers, grid, n_layers,
+                           false, task,
+                           channel_to_main, channel_to_worker)
+end
+
+function Base.close(task::VoxelMesherTask)
+    put!(task.channel_to_worker, false)
+    wait(task.task)
+
+    close(task.channel_to_worker)
+    close(task.channel_to_main)
+end
+
+"Checks in on the meshing task. If it finished some work, the corresponding lambda is invoked."
+function update_meshing(task::VoxelMesherTask,
+                        take_grid::Base.Callable, # (grid::VoxelGrid) -> nothing
+                        build_mesh::Base.Callable # (index::Int, temp_data::VoxelMesher) -> nothing
+                       )
+    if isready(task.channel_to_main)
+        finished_idx::Int = take!(task.channel_to_main)
+        # Did the task just finish initial voxel generation?
+        if finished_idx == 0
+            take_grid(task.grid)
+        # Otherwise, it finished meshing a layer.
+        else
+            @bpworld_assert(task.is_finished)
+            @bpworld_assert(finished_idx <= task.n_layers)
+
+            put!(task.channel_to_worker, true)
+
+            # If this was the last layer, we're finished.
+            if finished_idx == task.n_layers
+                task.is_finished = true
+            end
+        end
+    # If the task is still running and Julia only has one thread,
+    #    we need to manually yield our time to give the task a chance.
+    elseif Threads.nthreads() == 1
+        yield()
+    end
+end
+
+
 ########################
 ##   Meshing Result   ##
 ########################

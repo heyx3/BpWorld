@@ -49,7 +49,7 @@ end
 @close_gl_resources(v::Viewport, (v.target_current, v.target_previous))
 
 function Viewport(cam::Cam3D{Float32},
-                  settings::Cam3D_Settings{Float32}
+                  settings::Cam3D_Settings{Float32},
                   resolution::v2i = Bplus.GL.get_window_size())
     return Viewport(
         cam, settings,
@@ -58,11 +58,20 @@ function Viewport(cam::Cam3D{Float32},
 end
 
 function viewport_clear(viewport::Viewport)
-    target_clear(viewport.target_current, )
+    target_clear(viewport.target_current, vRGBAf(0, 0, 0, 1), 1)
+    target_clear(viewport.target_current, vRGBAf(0, 0, 0, 1), 2)
+    target_clear(viewport.target_current, @f32(0))
 end
 function viewport_swap(viewport::Viewport)
-    error("#TODO: Add Copy-texture operation in B+, then use it here")
+    # Copy rendered images into the other target.
+    copy_tex_pixels(viewport.target_current.color,
+                    viewport.target_previous.color)
+    copy_tex_pixels(viewport.target_current.emissive_strength,
+                    viewport.target_previous.emissive_strength)
+    copy_tex_pixels(viewport.target_current.depth,
+                    vewport.target_previous.depth)
 
+    # Swap the current and other target.
     old_current = viewport.target_current
     viewport.target_current = viewport.target_previous
     viewport.target_previous = old_current
