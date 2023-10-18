@@ -10,6 +10,8 @@ include("layer_meshing.jl")
 include("layer_data_definition.jl")
 include("layer_rendering.jl")
 
+include("shadowmap.jl")
+
 include("scene.jl")
 include("layer_render_models.jl")
 

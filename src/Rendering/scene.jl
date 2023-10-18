@@ -6,6 +6,8 @@ mutable struct Scene
     sun::UniformBlock_Sun
     fog::UniformBlock_Fog
 
+    sun_shadowmap::Shadowmap
+
     layer_files::Vector{String}
     layer_meshes::Vector{Optional{LayerMesh}}
     viewports::Set{Viewport}
@@ -104,6 +106,8 @@ function Scene()
                          @f32(0.0),
                          m4_identityf()),
         UniformBlock_Fog(@f32(0), @f32(1), @f32(0), @f32(1), one(vRGBAf)),
+
+        Shadowmap(1024),
 
         Vector{String}(), Vector{LayerMesh}(),
         Set{Viewport}(), Set{AbstractLayerRenderer}(),
@@ -220,11 +224,7 @@ function remove_layer(scene::Scene, layer_data_path::String)
     return nothing
 end
 
-function render_viewport(s::Scene, v::Viewport)
-    #TODO: Implement
-end
-
-function update_scene(s::Scene)
+function update_scene(s::Scene, delta_seconds::Float32)
     update_meshing(
         s.voxel_meshing,
         new_grid::VoxelGrid -> begin
@@ -242,4 +242,18 @@ function update_scene(s::Scene)
             end
         end
     )
+end
+
+"Renders auxiliary and offscreen data, such as shadowmaps"
+function prepare_rendering(s::Scene)
+    prepare(s.sun_shadowmap)
+    #TODO: Render shadowmap
+end
+
+function render_viewport(s::Scene, v::Viewport)
+    #TODO: Depth pre-pass
+
+    #TODO: Main passes
+
+    #TODO: Post effects
 end
