@@ -131,7 +131,7 @@ function ensure_renderer(scene::Scene, model_name::Symbol, model::AbstractLayerD
 
         push!(scene.renderers, renderer)
         scene.renderer_viewport_assets[renderer] = Dict{Viewport, AbstractLayerRendererViewport}()
-        scene.renderer_layer_assets[renderer] = Dict{AbstractLayerRenderer, AbstractLayerRendererLayer}()
+        scene.renderer_layer_assets[renderer] = Dict{Int, AbstractLayerRendererLayer}()
 
         # Register the renderer with all viewports.
         for viewport in scene.viewports
@@ -246,14 +246,56 @@ end
 
 "Renders auxiliary and offscreen data, such as shadowmaps"
 function prepare_rendering(s::Scene)
-    prepare(s.sun_shadowmap)
-    #TODO: Render shadowmap
+    prepare(s.sun_shadowmap, s.sun.dir.xyz,
+            Box3Df(min=zero(v3f), size=vsize(s.voxels_array)))
+    render_pass(s, v, PassInfo(Pass.shadow_map))
 end
 
 function render_viewport(s::Scene, v::Viewport)
-    #TODO: Depth pre-pass
+    viewport_clear(v)
 
-    #TODO: Main passes
+    # Run the depth pre-pass.
+    viewport_each_target(v) do vt::ViewportTarget
+        target_configure_fragment_outputs(vt.target, Vec{0, Int}())
+    end
+    render_pass(s, v, PassInfo(Pass.depth))
+
+    # Run the forward pass.
+    viewport_each_target(v) do vt::ViewportTarget
+        n_color_attachments = length(vt.target.attachment_colors)
+        target_configure_fragment_outputs(vt.target, collect(1:n_color_attachments))
+    end
+    render_pass(s, v, PassInfo(Pass.forward))
 
     #TODO: Post effects
+end
+
+function render_pass(s::Scene, v::Viewport, pass_info::PassInfo)
+    # Sort renderers by their order.
+    #TODO: Re-use a buffer stored in the Scene.
+    renderer_orders::Vector{Tuple{AbstractLayerRenderer, Int}} =
+        [(layer, layer_renderer_order(layer, pass)) for layer in s.renderers]
+    sort!(renderer_orders, by=(tuple->tuple[2]))
+
+    # Run each one.
+    for (renderer::AbstractLayerRenderer, _) in renderer_orders
+        render_layer_pass(s, v, pass_info, renderer)
+    end
+end
+function render_layer_pass(s::Scene, v::Viewport, pass_info::PassInfo,
+                           renderer::AbstractLayerRenderer)
+    # Make sure the viewport is set up correctly.
+    if layer_renderer_reads_target(renderer, pass_info)
+        viewport_swap(v)
+    end
+    target_activate(v.target_current.target)
+
+    # Let the renderer do its thing.
+    layer_renderer_execute(
+        renderer, v,
+        s.renderer_viewport_assets[renderer][v],
+        s.renderer_layer_assets[renderer]::Dict{Int, AbstractLayerRendererLayer},
+        s, pass_info,
+        sort(iter(keys(s.renderer_layer_assets[renderer]))) #TODO: Re-use a buffer stored in the Scene.
+    )
 end

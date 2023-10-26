@@ -76,3 +76,8 @@ function viewport_swap(viewport::Viewport)
     viewport.target_current = viewport.target_previous
     viewport.target_previous = old_current
 end
+function viewport_each_target(to_do, viewport::Viewport)
+    for target in (viewport.target_current, viewport.target_previous)
+        to_do(target)
+    end
+end

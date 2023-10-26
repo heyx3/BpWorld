@@ -85,17 +85,28 @@ end
 
 ##  Render passes  ##
 
-"Higher numbers are rendered earlier"
-layer_renderer_order(r::AbstractLayerRenderer)::Int = error("layer_renderer_order(::", typeof(r), ") not implemented")
-"Whether a renderer needs to sample from one of the previous passes' textures, for things like refraction"
-layer_renderer_reads_target(r::AbstractLayerRenderer)::Bool = error("layer_renderer_reads_target(::", typeof(r), ") not implemented")
+@bp_enum(Pass,
+    depth, shadow_map,
+    forward
+)
+struct PassInfo
+    type::E_Pass
+    # Future data may go here.
+end
 
-"Executes a renderer's pass"
+
+"Higher numbers are rendered earlier"
+layer_renderer_order(r::AbstractLayerRenderer, pass_info::PassInfo)::Int = error("layer_renderer_order(::", typeof(r), ") not implemented")
+"Whether a renderer needs to sample from one of the previous passes' textures, for things like refraction"
+layer_renderer_reads_target(r::AbstractLayerRenderer, pass_info::PassInfo)::Bool = error("layer_renderer_reads_target(::", typeof(r), ") not implemented")
+
+"Executes a renderer on the given layers, for the given pass"
 function layer_renderer_execute(r::AbstractLayerRenderer,
                                 viewport::Viewport,
                                 view_state::AbstractLayerRendererViewport,
                                 layers::Dict{Int, <:AbstractLayerRendererLayer},
                                 scene,
+                                pass_info::PassInfo,
                                 applicable_layers::Vector{Int})
-    error("layer_renderer_execute(::", typeof(r), ") not implemented")
+    error("layer_renderer_execute(::", typeof(r), ", ...) not implemented")
 end
