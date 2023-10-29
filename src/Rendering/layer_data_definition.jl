@@ -33,14 +33,16 @@ The choice of lighting model, plus any associated settings.
 
 Serialization is done by writing/reading all properties of the concrete object,
     plus a special field representing the model's unique type identifier.
+It's recommended to declare the struct with `@kwdef` to avoid writing a constructor manually.
+
 If a concrete type overloads the serialization behavior, it must remember to add the 'model' field too!
 "
 abstract type AbstractLayerDataLightingModel end
 
 # Use a name to distinguish each type of lighting model.
 const LIGHTING_MODEL_TYPE_KEY = :model
-lighting_model_serialized_name(T::Type{AbstractLayerDataLightingModel})::Symbol = error(T, " doesn't implement lighting_model_serialized_name()")
-lighting_model_type(::Val{SerializedName}) where {SerializedName} = error("Lighting model '", SerializedName, "' isn't supported")
+lighting_model_serialized_name(T::Type{<:AbstractLayerDataLightingModel})::Symbol = error(T, " doesn't implement lighting_model_serialized_name()")
+lighting_model_type(::Val{SerializedName}) where {SerializedName} = error("Lighting model '", SerializedName, "' doesn't exist (names are case-sensitive!)")
 
 StructTypes.StructType(::Type{AbstractLayerDataLightingModel}) = StructTypes.Custom()
 StructTypes.lowertype(::Type{<:AbstractLayerDataLightingModel}) = Dict{Symbol, Any}()
@@ -57,21 +59,18 @@ function StructTypes.construct(::Type{AbstractLayerDataLightingModel}, data::Dic
     # Delegate the actual creation to child types in case they want to customize it.
     data = copy(data)
     delete!(data, LIGHTING_MODEL_TYPE_KEY)
-    return StructTypes.construct(TConcrete)
+    return StructTypes.construct(TConcrete, data)
 end
 function StructTypes.construct(T::Type{<:AbstractLayerDataLightingModel}, data_dict)
-    # By default, feed each property into the constructor in the order they're declared.
-    input_names = propertynames(T)
-    input_values = map(name -> get(data_dict, name, nothing), input_names)
-
-    # Warn the user in case of a typo or other misunderstanding.
+    # Warn the user about inavlid property names.
     for field in keys(data_dict)
-        if !(field in input_names)
-            @warn "Unexpected field in $(lighting_model_serialized_name(T)): '$field'"
+        if !(field in propertynames(T))
+            @warn "Unexpected field in $(lighting_model_serialized_name(T)): $field"
         end
     end
 
-    return T(input_values)
+    # Provide each property to the constructor as a named argument.
+    return T(; data_dict...)
 end
 
 

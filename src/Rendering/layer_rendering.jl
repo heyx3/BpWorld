@@ -66,8 +66,8 @@ function layer_renderer_init_layer(r::AbstractLayerRenderer,
 end
 "Called just before calling `close()` on a layer's specific assets"
 function layer_renderer_close_layer(r::AbstractLayerRenderer,
-                                    v::Viewport,
-                                    rv::AbstractLayerRendererViewport,
+                                    data::LayerDefinition,
+                                    assets::AbstractLayerRendererLayer,
                                     scene)
     error("layer_renderer_close_layer(::", typeof(r), ") not implemented")
 end
@@ -103,10 +103,9 @@ layer_renderer_reads_target(r::AbstractLayerRenderer, pass_info::PassInfo)::Bool
 "Executes a renderer on the given layers, for the given pass"
 function layer_renderer_execute(r::AbstractLayerRenderer,
                                 viewport::Viewport,
-                                view_state::AbstractLayerRendererViewport,
-                                layers::Dict{Int, <:AbstractLayerRendererLayer},
+                                viewport_assets::AbstractLayerRendererViewport,
+                                layers::Vector{<:Tuple{LayerDefinition, Optional{LayerMesh}, AbstractLayerRendererLayer}},
                                 scene,
-                                pass_info::PassInfo,
-                                applicable_layers::Vector{Int})
+                                pass_info::PassInfo)
     error("layer_renderer_execute(::", typeof(r), ", ...) not implemented")
 end

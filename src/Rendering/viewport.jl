@@ -1,7 +1,7 @@
 "A set of textures representing the output of the scene render"
 struct ViewportTarget
     color::Texture
-    emissive_strength::Texture
+    emissive::Texture
     depth::Texture
 
     target::Target
@@ -17,10 +17,10 @@ function ViewportTarget(resolution::v2i)
         ),
         resolution
     )
-    tex_emission = Texture(
+    tex_emissive = Texture(
         SimpleFormat(
             FormatTypes.float,
-            SimpleFormatComponents.R,
+            SimpleFormatComponents.RGB,
             SimpleFormatBitDepths.B16
         ),
         resolution
@@ -30,11 +30,17 @@ function ViewportTarget(resolution::v2i)
     )
 
     target = Target(
-        [ TargetOutput(tex=tex_color), TargetOutput(tex=tex_emission) ],
+        [ TargetOutput(tex=tex_color), TargetOutput(tex=tex_emissive) ],
         TargetOutput(tex=tex_depth)
     )
 
-    return ViewportTarget(tex_color, tex_emission, tex_depth, target)
+    return ViewportTarget(tex_color, tex_emissive, tex_depth, target)
+end
+
+function copy_to(src::ViewportTarget, dest::ViewportTarget)
+    copy_tex_pixels(src.color, dest.color)
+    copy_tex_pixels(src.emissive, dest.emissive)
+    copy_tex_pixels(src.depth, dest.depth)
 end
 
 
@@ -63,18 +69,7 @@ function viewport_clear(viewport::Viewport)
     target_clear(viewport.target_current, @f32(0))
 end
 function viewport_swap(viewport::Viewport)
-    # Copy rendered images into the other target.
-    copy_tex_pixels(viewport.target_current.color,
-                    viewport.target_previous.color)
-    copy_tex_pixels(viewport.target_current.emissive_strength,
-                    viewport.target_previous.emissive_strength)
-    copy_tex_pixels(viewport.target_current.depth,
-                    vewport.target_previous.depth)
-
-    # Swap the current and other target.
-    old_current = viewport.target_current
-    viewport.target_current = viewport.target_previous
-    viewport.target_previous = old_current
+    copy_to(viewport.target_current, viewport.target_previous)
 end
 function viewport_each_target(to_do, viewport::Viewport)
     for target in (viewport.target_current, viewport.target_previous)

@@ -7,9 +7,7 @@
             "sampler": {
                 "pixel_filter": "rough",
                 "mip_filter": null
-            },
-            "use_mips": false,
-            "channels": "RGB"
+            }
         }
     },
 

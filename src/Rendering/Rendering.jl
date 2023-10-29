@@ -9,12 +9,11 @@ include("world_buffers.jl")
 include("layer_meshing.jl")
 include("layer_data_definition.jl")
 include("layer_rendering.jl")
+include("layer_render_shaders.jl")
 
 include("shadowmap.jl")
-
 include("scene.jl")
-include("layer_render_models.jl")
 
-#TODO: Render scene from Viewport
+include("layer_render_models.jl")
 
 end

@@ -13,6 +13,11 @@
 #define SHARPEN(t) smoothstep(0.0, 1.0, t)
 #define SHARPENER(t) SMOOTHERSTEP(t)
 
+//Converts a 0-1 value to the (-1, +1) range.
+#define NORMALIZED_TO_SIGNED(uv) (-1.0 + (2.0 * uv))
+//Converts a (-1, +1) range value to the 0-1 range.
+#define SIGNED_TO_NORMALIZED(normal) (0.5 + (0.5 * normal))
+
 //To prevent a comma from being noticed by a macro invocation.
 #define COMMA ,
 

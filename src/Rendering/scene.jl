@@ -267,7 +267,14 @@ function render_viewport(s::Scene, v::Viewport)
     end
     render_pass(s, v, PassInfo(Pass.forward))
 
+    #TODO: Render sky, using depth-test "== 1.0"
+
+    #TODO: Bloom
     #TODO: Post effects
+    #TODO: Tonemap with col = col / (col + 1)
+    # Copy the render to the screen with an adjusted gamma.
+    target_activate(nothing)
+    simple_blit(v.target_current.color, output_curve=@f32(1 / 2.2))
 end
 
 function render_pass(s::Scene, v::Viewport, pass_info::PassInfo)
@@ -279,23 +286,34 @@ function render_pass(s::Scene, v::Viewport, pass_info::PassInfo)
 
     # Run each one.
     for (renderer::AbstractLayerRenderer, _) in renderer_orders
-        render_layer_pass(s, v, pass_info, renderer)
+        render_layers(renderer, s, v, pass_info)
     end
 end
-function render_layer_pass(s::Scene, v::Viewport, pass_info::PassInfo,
-                           renderer::AbstractLayerRenderer)
+function render_layers(renderer::AbstractLayerRenderer,
+                       scene::Scene, v::Viewport,
+                       pass_info::PassInfo)
     # Make sure the viewport is set up correctly.
     if layer_renderer_reads_target(renderer, pass_info)
         viewport_swap(v)
     end
     target_activate(v.target_current.target)
 
-    # Let the renderer do its thing.
+    # Gather the relevant layer data.
+    #TODO: Re-use buffers (stored in the Scene) for this work.
+    relevant_layer_idcs::Vector{Int} = sort(iter(keys(scene.renderer_layer_assets[renderer])))
+    relevant_layer_data = map(relevant_layer_idcs) do i
+        return (
+            get_cached_data!(scene.cache_layers, scene.layer_files[i]),
+            scene.layer_meshes[i],
+            scene.renderer_layer_assets[renderer][i]
+        )
+    end
+
+    # Hand all the data off to the renderer.
     layer_renderer_execute(
-        renderer, v,
-        s.renderer_viewport_assets[renderer][v],
-        s.renderer_layer_assets[renderer]::Dict{Int, AbstractLayerRendererLayer},
-        s, pass_info,
-        sort(iter(keys(s.renderer_layer_assets[renderer]))) #TODO: Re-use a buffer stored in the Scene.
+        renderer,
+        v, scene.renderer_viewport_assets[renderer][v],
+        relevant_layer_data,
+        scene, pass_info
     )
 end

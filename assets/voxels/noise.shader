@@ -1,11 +1,13 @@
+//Automatically inserted into every shader.
+
 // Mostly taken from the following shaders:
 //    https://www.shadertoy.com/view/7stBDH
+//    https://www.shadertoy.com/view/4djSRW
 
 ////////////////////
 //    Hashing     //
 ////////////////////
 
-// A modified version of this: https://www.shadertoy.com/view/4djSRW
 //Works best with seed values in the hundreds.
 
 //Hash 1D from 1D-3D data
@@ -106,10 +108,10 @@ vec4 hashTo4(vec4 p4)
 float valueNoise(float x, float seed)
 {
     float xMin = floor(x),
-        xMax = ceil(x);
+          xMax = ceil(x);
 
     float noiseMin = hashTo1(vec2(xMin, seed) * 450.0),
-        noiseMax = hashTo1(vec2(xMax, seed) * 450.0);
+          noiseMax = hashTo1(vec2(xMax, seed) * 450.0);
 
     float t = x - xMin;
     //t = SMOOTHERSTEP(t); //Actually gives worse results due to
@@ -120,7 +122,7 @@ float valueNoise(float x, float seed)
 float valueNoise(vec2 x, float seed)
 {
     vec2 xMin = floor(x),
-        xMax = ceil(x);
+         xMax = ceil(x);
     vec4 xMinMax = vec4(xMin, xMax);
 
     vec2 t = x - xMin;
@@ -141,18 +143,18 @@ float valueNoise(vec2 x, float seed)
 #define IMPL_OCTAVE_NOISE(x, outputVar, persistence, seed, nOctaves, noiseFunc, noiseMidArg, octaveValueMod) \
     float outputVar; { \
     float sum = 0.0,                                                 \
-        scale = 1.0,                                               \
-        nextWeight = 1.0,                                          \
-        totalWeight = 0.0;                                         \
+          scale = 1.0,                                               \
+          nextWeight = 1.0,                                          \
+          totalWeight = 0.0;                                         \
     for (int i = 0; i < nOctaves; ++i)                               \
     {                                                                \
         float octaveValue = noiseFunc((x) * scale,                   \
-                                    noiseMidArg                    \
-                                    (seed) + float(i));            \
+                                      noiseMidArg                    \
+                                      (seed) + float(i));            \
         octaveValueMod;                                              \
         sum += octaveValue * nextWeight;                             \
         totalWeight += nextWeight;                                   \
-                                                                    \
+                                                                     \
         nextWeight /= (persistence);                                 \
         scale *= (persistence);                                      \
     }                                                                \
@@ -165,12 +167,12 @@ float octaveNoise(vec2 x, float seed, int nOctaves, float persistence) { IMPL_OC
 float perlinNoise(float x, float seed)
 {
     float xMin = floor(x),
-        xMax = ceil(x),
-        t = x - xMin;
+          xMax = ceil(x),
+          t = x - xMin;
 
     float value = mix(t         * sign(hashTo1(vec2(xMin, seed) * 450.0) - 0.5),
-                    (1.0 - t) * sign(hashTo1(vec2(xMax, seed) * 450.0) - 0.5),
-                    SHARPENER(t));
+                      (1.0 - t) * sign(hashTo1(vec2(xMax, seed) * 450.0) - 0.5),
+                      SHARPENER(t));
     return INV_LERP(-PERLIN_MAX(1), PERLIN_MAX(1), value);
 }
 
@@ -181,22 +183,22 @@ vec2 perlinGradient2(float t)
 float perlinNoise(vec2 p, float seed)
 {
     vec2 pMin = floor(p),
-        pMax = pMin + 1.0,
-        t = p - pMin;
+         pMax = pMin + 1.0,
+         t = p - pMin;
     vec4 pMinMax = vec4(pMin, pMax),
-        tMinMax = vec4(t, p - pMax);
+         tMinMax = vec4(t, p - pMax);
 
     #define PERLIN2_POINT(ab) dot(tMinMax.ab, \
-                                perlinGradient2(hashTo1(vec3(pMinMax.ab, seed) * 450.0)))
+                                  perlinGradient2(hashTo1(vec3(pMinMax.ab, seed) * 450.0)))
     float noiseMinXMinY = PERLIN2_POINT(xy),
-        noiseMaxXMinY = PERLIN2_POINT(zy),
-        noiseMinXMaxY = PERLIN2_POINT(xw),
-        noiseMaxXMaxY = PERLIN2_POINT(zw);
+          noiseMaxXMinY = PERLIN2_POINT(zy),
+          noiseMinXMaxY = PERLIN2_POINT(xw),
+          noiseMaxXMaxY = PERLIN2_POINT(zw);
 
     t = SHARPENER(t);
     float value = mix(mix(noiseMinXMinY, noiseMaxXMinY, t.x),
-                    mix(noiseMinXMaxY, noiseMaxXMaxY, t.x),
-                    t.y);
+                      mix(noiseMinXMaxY, noiseMaxXMaxY, t.x),
+                      t.y);
     return INV_LERP(-PERLIN_MAX(2), PERLIN_MAX(2), value);
 }
 
@@ -232,8 +234,8 @@ void worleyPoints(vec2 x, float chanceOfPoint, float seed,
 //Implementation below:
 #define IMPL_WORLEY_START(T)                                    \
     T xCenter = floor(x),                                       \
-    xMin = xCenter - 1.0,                                     \
-    xMax = xCenter + 1.0;                                     \
+      xMin = xCenter - 1.0,                                     \
+      xMax = xCenter + 1.0;                                     \
     nPoints = 0;                                                \
     T nextPoint
 //end #define
@@ -242,7 +244,7 @@ void worleyPoints(vec2 x, float chanceOfPoint, float seed,
         points[nPoints++] = nextPoint
 //end #define
 void worleyPoints(float x, float chanceOfPoint, float seed,
-                out int nPoints, out float points[3])
+                  out int nPoints, out float points[3])
 {
     IMPL_WORLEY_START(float);
     IMPL_WORLEY_POINT(xMin);
@@ -250,7 +252,7 @@ void worleyPoints(float x, float chanceOfPoint, float seed,
     IMPL_WORLEY_POINT(xMax);
 }
 void worleyPoints(vec2 x, float chanceOfPoint, float seed,
-                out int nPoints, out vec2 points[9])
+                  out int nPoints, out vec2 points[9])
 {
     IMPL_WORLEY_START(vec2);
     
@@ -325,12 +327,12 @@ float worley3(T x, float chanceOfPoint, float seed) {                           
     int nPoints;                                                                 \
     T points[nMaxPoints];                                                        \
     worleyPoints(x, chanceOfPoint, seed, nPoints, points);                       \
-                                                                                \
+                                                                                 \
     if (nPoints < 1)                                                             \
         return 1.0; /* The nearest point is far away */                          \
-                                                                                \
+                                                                                 \
     float minDist1 = 9999999.9,                                                  \
-        minDist2 = 9999999.9;                                                  \
+          minDist2 = 9999999.9;                                                  \
     for (int i = 0; i < min(nMaxPoints, nPoints); ++i) /* Specify a hard-coded cap,  */           \
     {                                                  /*   in case it helps with unrolling   */  \
         float newD = efficientDist(points[i], x);                                \
