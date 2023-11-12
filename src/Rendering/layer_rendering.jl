@@ -91,7 +91,7 @@ end
 )
 struct PassInfo
     type::E_Pass
-    # Future data may go here.
+    elapsed_seconds::Float32
 end
 
 
@@ -100,11 +100,14 @@ layer_renderer_order(r::AbstractLayerRenderer, pass_info::PassInfo)::Int = error
 "Whether a renderer needs to sample from one of the previous passes' textures, for things like refraction"
 layer_renderer_reads_target(r::AbstractLayerRenderer, pass_info::PassInfo)::Bool = error("layer_renderer_reads_target(::", typeof(r), ") not implemented")
 
-"Executes a renderer on the given layers, for the given pass"
+"
+Executes a renderer on the given layers, for the given pass.
+Note that activation/deactivation of the layers' texture uniforms will be handled for you.
+"
 function layer_renderer_execute(r::AbstractLayerRenderer,
                                 viewport::Viewport,
                                 viewport_assets::AbstractLayerRendererViewport,
-                                layers::Vector{<:Tuple{LayerDefinition, Optional{LayerMesh}, AbstractLayerRendererLayer}},
+                                layers::Vector{<:Tuple{Int, LayerDefinition, Optional{LayerMesh}, AbstractLayerRendererLayer}},
                                 scene,
                                 pass_info::PassInfo)
     error("layer_renderer_execute(::", typeof(r), ", ...) not implemented")

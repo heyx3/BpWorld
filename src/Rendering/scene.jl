@@ -277,6 +277,9 @@ function render_viewport(s::Scene, v::Viewport)
     simple_blit(v.target_current.color, output_curve=@f32(1 / 2.2))
 end
 
+#TODO: When rendering, activate all user-specified texture views, and the voxel texture if any meshes are missing.
+#TODO: When finished all rendering, invoke scene function "render_cleanup()" and deactivate all user-specified texture views (plus the voxel texture).
+
 function render_pass(s::Scene, v::Viewport, pass_info::PassInfo)
     # Sort renderers by their order.
     #TODO: Re-use a buffer stored in the Scene.
@@ -303,6 +306,7 @@ function render_layers(renderer::AbstractLayerRenderer,
     relevant_layer_idcs::Vector{Int} = sort(iter(keys(scene.renderer_layer_assets[renderer])))
     relevant_layer_data = map(relevant_layer_idcs) do i
         return (
+            i,
             get_cached_data!(scene.cache_layers, scene.layer_files[i]),
             scene.layer_meshes[i],
             scene.renderer_layer_assets[renderer][i]

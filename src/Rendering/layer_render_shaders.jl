@@ -10,10 +10,27 @@ const UNIFORM_WORLD_VOXEL_OFFSET = "u_world_offset"
 const UNIFORM_WORLD_SCALE = "u_world_scale"
 const UNIFORM_MATRIX_VIEWPROJ = "u_mat_viewproj"
 const UNIFORM_ELAPSED_SECONDS = "u_totalSeconds"
+function set_universal_uniforms(prog::Program,
+                                world_offset::v3f, world_scale::v3f,
+                                elapsed_seconds::Float32,
+                                matrix_view_proj::fmat4)
+    set_uniform(prog, UNIFORM_WORLD_VOXEL_OFFSET, world_offset)
+    set_uniform(prog, UNIFORM_WORLD_SCALE, world_scale)
+    set_uniform(prog, UNIFORM_ELAPSED_SECONDS, elapsed_seconds)
+    set_uniform(prog, UNIFORM_MATRIX_VIEWPROJ, matrix_view_proj)
+end
 
 const UNIFORM_PREVIEW_VOXEL_COUNT = "u_nVoxels"
 const UNIFORM_PREVIEW_VOXEL_LAYER_IDX = "u_voxelLayer"
 const UNIFORM_PREVIEW_VOXEL_TEX = "u_voxelGrid"
+function set_preview_uniforms(prog::Program,
+                              n_voxels::v3u,
+                              layer_idx::Int,
+                              voxel_tex::Texture)
+    set_unifor(prog, "u_nVoxels", n_voxels)
+    set_uniform(prog, "u_voxelLayer", layer_idx)
+    set_uniform(prog, "u_voxelGrid", voxel_tex)
+end
 
 #####################################
 
@@ -258,11 +275,14 @@ const FORWARD_FX_SHADER_CODE = """
 ###############################
 ##    Shaders
 
-#TODO: Drop some '#line' commands over this code to help in tracking down shader errors
+# Shader source uses the '#line' preprocessor command
+#    to help make it clearer where errors are coming from.
 
 # Preview vertex shader:
 const SHADER_PREVIEW_VERT = """
+    #line 3000
     $COMMON_INCLUDE_CODE
+    #line 4000
 
     //Dynamically decide in the geometry shader whether each face of each voxel should be rendered.
     uniform uvec3 $UNIFORM_PREVIEW_VOXEL_COUNT;
@@ -281,8 +301,11 @@ const SHADER_PREVIEW_VERT = """
 """
 # Preview goemetry shader:
 const SHADER_PREVIEW_GEOM = """
+    #line 3000
     $COMMON_INCLUDE_CODE
+    #line 4000
     $FRAG_SHADER_INPUT_PACKING
+    #line 5000
 
     uniform usampler3D $UNIFORM_PREVIEW_VOXEL_TEX;
     uniform uint $UNIFORM_PREVIEW_VOXEL_LAYER_IDX;
@@ -356,8 +379,11 @@ const SHADER_PREVIEW_GEOM = """
 
 # Meshed vertex shader:
 const SHADER_MESHED_VERT = """
+    #line 3000
     $COMMON_INCLUDE_CODE
+    #line 4000
     $FRAG_SHADER_INPUT_PACKING
+    #line 5000
     void main() {
         UnpackedVertexInput vIn = unpackInput(vIn_packedInput);
 
@@ -375,10 +401,15 @@ const SHADER_MESHED_VERT = """
 
 # Header for all fragment shaders:
 const SHADER_FRAG_HEADER = """
+    #line 3000
     $COMMON_INCLUDE_CODE
+    #line 4000
     $FRAG_SHADER_INPUT_UNPACKING
+    #line 5000
     $FORWARD_FX_SHADER_CODE
+    #line 6000
     uniform float $UNIFORM_ELAPSED_SECONDS;
+    #line 7000
 """
 
 ###############################

@@ -105,7 +105,49 @@ end
 function layer_renderer_init_layer(r::LayerRenderer_Common,
                                    l::LayerDefinition,
                                    s::Scene)
-    #TODO: Set up shaders
+    # Generate declarations from the user data.
+    frag_defines = sprint() do io::IO
+        for (name, value) in l.preprocessor_defines
+            print(io, "#define ", name, " ", value, "\n")
+        end
+        for tex_data::LayerDataTexture in values(l.textures)
+            print(io, "uniform sampler2D ", tex_data.code_name, ";\n")
+        end
+    end
+
+    # Load the custom fragment shader.
+    fragment_shader_body = read(joinpath(VOXEL_LAYERS_PATH,
+                                         data.frag_shader_path),
+                                String)
+
+    # Load/generate shader source.
+    (vert_preview, vert_meshed, geom_preview, frag_forward, frag_depth) = process_shader_contents.((
+        SHADER_PREVIEW_VERT, SHADER_MESHED_VERT, SHADER_PREVIEW_GEOM,
+
+        replace("""
+        $COMMON_MODEL_FRAG_SHADER_HEADER_FORWARD
+        $frag_defines
+        #line 0
+        $fragment_shader_body
+        """, "\n        "=>"\n"),
+
+        replace("""
+        #line 10000
+        $COMMON_MODEL_FRAG_SHADER_HEADER_DEPTH
+        #line 1000
+        $frag_defines
+        #line 0
+        $fragment_shader_body
+        """, "\n        "=>"\n"),
+    ))
+
+    # Compile programs.
+    return LayerRendererLayer_Common(
+        Program(vert_preview, frag_depth; geom_shader=geom_preview),
+        Program(vert_meshed, frag_depth),
+        Program(vert_preview, frag_forward; geom_shader=geom_preview),
+        Program(vert_meshed, frag_forward)
+    )
 end
 function layer_renderer_close_layer(r::LayerRenderer_Common,
                                     l::LayerDefinition,
@@ -131,11 +173,77 @@ layer_renderer_reads_target(::LayerRenderer_Common, ::PassInfo) = false
 function layer_renderer_execute(renderer::LayerRenderer_Common,
                                 viewport::Viewport,
                                 viewport_assets::LayerRendererViewport_Common,
-                                layers::Vector{<:Tuple{LayerDefinition, Optional{LayerMesh}, AbstractLayerRendererLayer}},
+                                layers::Vector{<:Tuple{Int, LayerDefinition, Optional{LayerMesh}, AbstractLayerRendererLayer}},
                                 scene::Scene,
                                 pass_info::PassInfo)
-    for (layer_def, layer_mesh, layer_assets::LayerRendererLayer_Common) in layers
-        #TODO: Set up and draw the correct Program for this layer
+    mat_viewproj = m_combine(cam_view_mat(viewport.cam),
+                             cam_projection_mat(viewport.cam))
+    # Set some global render state.
+    let c = get_context()
+        c.cull_mode = FaceCullModes.off #TODO: Test that meshes and previews are both generated with correct orientation
+        c.blend_mode = (
+            rgb = make_blend_opaque(BlendStateRGB),
+            alpha = BlendStateAlpha(
+                BlendFactors.zero,
+                BlendFactors.one,
+                BlendOps.add
+            )
+        )
+        c.depth_write = true
+        if pass_info.type in (Pass.depth, Pass.shadow_map)
+            c.color_write_mask = zero(v4b)
+        end
+    end
+
+    for (layer_idx::Int, layer_def, layer_mesh, layer_assets::LayerRendererLayer_Common) in layers
+        # Decide which shader to use for this pass and layer.
+        has_mesh::Bool = exists(layer_mesh)
+        depth_only = (pass_info.type in (Pass.depth, Pass.shadow_map))
+        prog::Program = (layer_assets.depth_preview, layer_assets.depth_meshed,
+                         layer_assets.forward_preview, layer_assets.forward_meshed
+                        )[1 + (has_mesh ? 1 : 0) + (depth_only ? 0 : 2)]
+
+        # Set global uniforms.
+        set_universal_uniforms(prog,
+                               zero(v3f), v3f(10, 10, 10),
+                               pass_info.elapsed_seconds,
+                               mat_viewproj)
+        if isnothing(layer_mesh)
+            set_preview_uniforms(prog,
+                                 convert(v3u, vsize(scene.voxels_array)),
+                                 layer_idx,
+                                 scene.voxels)
+            # Note that texture activation (and later deactivation) isn't handled by us,
+            #    but by the scene.
+        end
+
+        # Set texture uniforms.
+        for (tex_file, tex_data) in layer_def.textures
+            uniform_name = tex_data.code_name
+
+            tex = get_cached_data!(scene.cache_textures, tex_file)
+            tex_view = get_view(tex, tex_data.sampler)
+            # Note that texture activation (and later deactivation) isn't handled by us,
+            #    but by the scene.
+
+            set_uniform(prog, uniform_name, tex_view)
+        end
+
+        # Draw.
+        if has_mesh
+            render_mesh(layer_mesh, prog)
+        else
+            render_mesh(
+                service_BasicGraphics().empty_mesh, prog
+                ;
+                shape = PrimitiveTypes.point,
+                indexed_params = nothing,
+                elements = IntervalU(
+                    min=1,
+                    size=prod(vsize(scene.voxels_array))
+                )
+            )
+        end
     end
 end
 

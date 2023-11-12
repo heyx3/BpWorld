@@ -49,7 +49,7 @@ push!(RUN_ON_INIT, () -> begin
 
     # Ideally in deployment we'd respect OS conventions
     #    about where to put temp files vs save files vs installed files,
-    #    but I don't even know if that information is realistically gettable through Julia.
+    #    but I don't even know if that information is gettable through Julia.
     # So just keep everything together in the build folder.
     global SCENES_PATH = joinpath(ROOT_PATH, "scenes")
     global VOXEL_LAYERS_PATH = joinpath(ROOT_PATH, "layers")
