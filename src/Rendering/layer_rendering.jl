@@ -107,7 +107,9 @@ Note that activation/deactivation of the layers' texture uniforms will be handle
 function layer_renderer_execute(r::AbstractLayerRenderer,
                                 viewport::Viewport,
                                 viewport_assets::AbstractLayerRendererViewport,
-                                layers::Vector{<:Tuple{Int, LayerDefinition, Optional{LayerMesh}, AbstractLayerRendererLayer}},
+                                # All the layer data, including a lookup of textures by uniform name.
+                                layers::Vector{<:Tuple{Int, LayerDefinition, Optional{LayerMesh},
+                                                       Dict{String, Bplus.GL.View}, AbstractLayerRendererLayer}},
                                 scene,
                                 pass_info::PassInfo)
     error("layer_renderer_execute(::", typeof(r), ", ...) not implemented")

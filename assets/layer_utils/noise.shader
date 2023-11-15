@@ -255,17 +255,17 @@ void worleyPoints(vec2 x, float chanceOfPoint, float seed,
                   out int nPoints, out vec2 points[9])
 {
     IMPL_WORLEY_START(vec2);
-    
+
     IMPL_WORLEY_POINT(xMin);
     IMPL_WORLEY_POINT(xCenter);
     IMPL_WORLEY_POINT(xMax);
-    
+
     IMPL_WORLEY_POINT(vec2(xMin.x, xCenter.y));
     IMPL_WORLEY_POINT(vec2(xMin.x, xMax.y));
-    
+
     IMPL_WORLEY_POINT(vec2(xCenter.x, xMin.y));
     IMPL_WORLEY_POINT(vec2(xCenter.x, xMax.y));
-    
+
     IMPL_WORLEY_POINT(vec2(xMax.x, xMin.y));
     IMPL_WORLEY_POINT(vec2(xMax.x, xCenter.y));
 }

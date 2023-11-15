@@ -7,6 +7,7 @@ mutable struct Scene
     fog::UniformBlock_Fog
 
     sun_shadowmap::Shadowmap
+    sky::Sky
 
     layer_files::Vector{String}
     layer_meshes::Vector{Optional{LayerMesh}}
@@ -24,6 +25,9 @@ mutable struct Scene
     cache_layers::FileCacher{LayerDefinition}
     cache_error_texture::Texture
     cache_error_layer::LayerDefinition
+
+    # Buffers for various functions:
+    internal_layer_texture_views::Vector{Dict{String, Bplus.GL.View}}
 end
 @close_gl_resources(s::Scene,
     s.layers, s.viewports, s.renderers,
@@ -33,6 +37,7 @@ end
     (v.instance for v in values(s.cache_textures.files) if (v.instance != s.cache_error_texture)),
     # Individual non-Resource objects that need to be closed:
     tuple(
+        s.sky,
         @optional(exists(s.voxel_meshing), s.voxel_meshing)
     )
 )
@@ -108,6 +113,7 @@ function Scene()
         UniformBlock_Fog(@f32(0), @f32(1), @f32(0), @f32(1), one(vRGBAf)),
 
         Shadowmap(1024),
+        Sky(),
 
         Vector{String}(), Vector{LayerMesh}(),
         Set{Viewport}(), Set{AbstractLayerRenderer}(),
@@ -119,10 +125,16 @@ function Scene()
         cache_textures,
         cache_layers,
         cache_error_texture,
-        cache_error_layer
+        cache_error_layer,
+
+        [ ]
     )
 end
 
+
+########################
+#  Internal Functions  #
+########################
 
 "Gets the renderer for the given lighting model, creating one if needed"
 function ensure_renderer(scene::Scene, model_name::Symbol, model::AbstractLayerDataLightingModel)::AbstractLayerRenderer
@@ -152,6 +164,59 @@ function ensure_renderer(scene::Scene, model_name::Symbol, model::AbstractLayerD
     return nothing
 end
 
+function render_pass(s::Scene, v::Viewport, pass_info::PassInfo)
+    # Sort renderers by their order.
+    #TODO: Re-use a buffer stored in the Scene.
+    renderer_orders::Vector{Tuple{AbstractLayerRenderer, Int}} =
+        [(layer, layer_renderer_order(layer, pass)) for layer in s.renderers]
+    sort!(renderer_orders, by=(tuple->tuple[2]))
+
+    # Run each one.
+    for (renderer::AbstractLayerRenderer, _) in renderer_orders
+        render_layers(renderer, s, v, pass_info)
+    end
+
+    # Render the sky last, to minimize overdraw.
+    if pass_info.type in (Pass.forward, )
+        render_sky(s.sky, pass_info.elapsed_seconds)
+    end
+end
+function render_layers(renderer::AbstractLayerRenderer,
+                       scene::Scene, v::Viewport,
+                       pass_info::PassInfo)
+    # Make sure the viewport is set up correctly.
+    if layer_renderer_reads_target(renderer, pass_info)
+        viewport_swap(v)
+    end
+    target_activate(v.target_current.target)
+
+    # Gather the relevant layer data.
+    #TODO: Re-use buffers (stored in the Scene) for this work.
+    relevant_layer_idcs::Vector{Int} = sort(iter(keys(scene.renderer_layer_assets[renderer])))
+    relevant_layer_data = map(relevant_layer_idcs) do i
+        return (
+            i,
+            get_cached_data!(scene.cache_layers, scene.layer_files[i]),
+            scene.layer_meshes[i],
+            scene.internal_layer_texture_views[i],
+            scene.renderer_layer_assets[renderer][i]
+        )
+    end
+
+    # Hand all the data off to the renderer.
+    layer_renderer_execute(
+        renderer,
+        v, scene.renderer_viewport_assets[renderer][v],
+        relevant_layer_data,
+        scene, pass_info
+    )
+end
+
+
+#####################################
+#  Interface: viewports and layers  #
+#####################################
+
 "Initializes a new viewport into the scene and returns it. Destroy it with `remove_viewport()`."
 function add_viewport( scene::Scene,
                        cam::Cam3D{Float32},
@@ -172,7 +237,7 @@ function add_viewport( scene::Scene,
     push!(scene.viewports, viewport)
     return viewport
 end
-"Cleans up a viewport and removes it from the scene"
+"Cleans up a viewport (created with `add_viewport()`) and removes it from the scene"
 function remove_viewport(scene::Scene, viewport::Viewport)
     @bp_check(viewport in scene.viewports, "Viewport doesn't exist in the scene")
 
@@ -185,6 +250,7 @@ function remove_viewport(scene::Scene, viewport::Viewport)
     close(viewport)
 end
 
+"Initializes a new layer into the scene and returns it. Destroy it with `remove_layer()`."
 function add_layer(scene::Scene, layer_data_path::String)::LayerDefinition
     layer_data::LayerDefinition = get_cached_data!(scene.cache_layers, layer_data_path)
 
@@ -202,6 +268,7 @@ function add_layer(scene::Scene, layer_data_path::String)::LayerDefinition
 
     return layer_data
 end
+"Cleans up a layer (created with `add_layer()`) and removes it from the scene"
 function remove_layer(scene::Scene, layer_data_path::String)
     layer_data::LayerDefinition = get_cached_data!(scene.cache_layers, layer_data_path)
     layer_idx = findfirst(path -> layer_data_path == path, scene.layer_files)
@@ -224,7 +291,13 @@ function remove_layer(scene::Scene, layer_data_path::String)
     return nothing
 end
 
-function update_scene(s::Scene, delta_seconds::Float32)
+
+##########################
+#  Interface: rendering  #
+##########################
+
+function begin_scene_frame(s::Scene, delta_seconds::Float32, total_elapsed_seconds::Float32)
+    # Update any meshing work going on.
     update_meshing(
         s.voxel_meshing,
         new_grid::VoxelGrid -> begin
@@ -242,82 +315,71 @@ function update_scene(s::Scene, delta_seconds::Float32)
             end
         end
     )
-end
 
-"Renders auxiliary and offscreen data, such as shadowmaps"
-function prepare_rendering(s::Scene)
+    # Render shadowmaps.
     prepare(s.sun_shadowmap, s.sun.dir.xyz,
             Box3Df(min=zero(v3f), size=vsize(s.voxels_array)))
-    render_pass(s, v, PassInfo(Pass.shadow_map))
+    render_pass(s, v, PassInfo(Pass.shadow_map, total_elapsed_seconds))
+
+    # Gather the textures to use for each layer from file caches.
+    n_layers::Int = length(s.layer_files)
+    # Re-use buffers as much as possible.
+    while length(s.internal_layer_texture_views) < n_layers
+        push!(s.internal_layer_texture_views, Dict{String, Bplus.GL.View}())
+    end
+    for (layer_path, layer_textures_lookup) in zip(s.layer_files, s.internal_layer_texture_views)
+        layer_data::LayerDefinition = get_cached_data!(s.cache_layers, layer_path)
+        for (tex_path, tex_settings::LayerDataTexture) in layer_data.textures
+            texture::Texture = get_cached_data!(s.cache_textures, tex_path)
+            sampler::Optional{TexSampler{2}} = tex_settings.sampler
+            layer_textures_lookup[tex_settings.code_name] = get_view(texture, sampler)
+        end
+    end
+
+    # Activate the texture views for all layer textures.
+    for layer_textures in @view(s.internal_layer_texture_views[1:n_layers])
+        for view in values(layer_textures)
+            view_activate(view)
+        end
+    end
+    # Activate the voxel data texture if there are any non-meshed layers, who need it.
+    if any(isnothing, s.layer_meshes)
+        view_activate(s.voxels)
+    end
+end
+function end_scene_frame(s::Scene)
+    # Deactivate texture views for all layer textures, and the voxel data texture if it was activated.
+    for layer_textures in @view(s.internal_layer_texture_views[1:n_layers])
+        for view in values(layer_textures)
+            view_deactivate(views)
+        end
+        empty!(layer_textures)
+    end
+    view_deactivate(s.voxels)
 end
 
-function render_viewport(s::Scene, v::Viewport)
+"Make sure to call `begin_scene_frame()` before invoking this function"
+function render_viewport(s::Scene, v::Viewport, total_elapsed_seconds::Float32)
     viewport_clear(v)
 
     # Run the depth pre-pass.
     viewport_each_target(v) do vt::ViewportTarget
         target_configure_fragment_outputs(vt.target, Vec{0, Int}())
     end
-    render_pass(s, v, PassInfo(Pass.depth))
+    render_pass(s, v, PassInfo(Pass.depth, total_elapsed_seconds))
 
     # Run the forward pass.
     viewport_each_target(v) do vt::ViewportTarget
         n_color_attachments = length(vt.target.attachment_colors)
         target_configure_fragment_outputs(vt.target, collect(1:n_color_attachments))
     end
-    render_pass(s, v, PassInfo(Pass.forward))
-
-    #TODO: Render sky, using depth-test "== 1.0"
+    render_pass(s, v, PassInfo(Pass.forward, total_elapsed_seconds))
 
     #TODO: Bloom
     #TODO: Post effects
     #TODO: Tonemap with col = col / (col + 1)
+
     # Copy the render to the screen with an adjusted gamma.
     target_activate(nothing)
     simple_blit(v.target_current.color, output_curve=@f32(1 / 2.2))
-end
-
-#TODO: When rendering, activate all user-specified texture views, and the voxel texture if any meshes are missing.
-#TODO: When finished all rendering, invoke scene function "render_cleanup()" and deactivate all user-specified texture views (plus the voxel texture).
-
-function render_pass(s::Scene, v::Viewport, pass_info::PassInfo)
-    # Sort renderers by their order.
-    #TODO: Re-use a buffer stored in the Scene.
-    renderer_orders::Vector{Tuple{AbstractLayerRenderer, Int}} =
-        [(layer, layer_renderer_order(layer, pass)) for layer in s.renderers]
-    sort!(renderer_orders, by=(tuple->tuple[2]))
-
-    # Run each one.
-    for (renderer::AbstractLayerRenderer, _) in renderer_orders
-        render_layers(renderer, s, v, pass_info)
-    end
-end
-function render_layers(renderer::AbstractLayerRenderer,
-                       scene::Scene, v::Viewport,
-                       pass_info::PassInfo)
-    # Make sure the viewport is set up correctly.
-    if layer_renderer_reads_target(renderer, pass_info)
-        viewport_swap(v)
-    end
-    target_activate(v.target_current.target)
-
-    # Gather the relevant layer data.
-    #TODO: Re-use buffers (stored in the Scene) for this work.
-    relevant_layer_idcs::Vector{Int} = sort(iter(keys(scene.renderer_layer_assets[renderer])))
-    relevant_layer_data = map(relevant_layer_idcs) do i
-        return (
-            i,
-            get_cached_data!(scene.cache_layers, scene.layer_files[i]),
-            scene.layer_meshes[i],
-            scene.renderer_layer_assets[renderer][i]
-        )
-    end
-
-    # Hand all the data off to the renderer.
-    layer_renderer_execute(
-        renderer,
-        v, scene.renderer_viewport_assets[renderer][v],
-        relevant_layer_data,
-        scene, pass_info
-    )
 end

@@ -35,9 +35,6 @@ const COMMON_MODEL_FRAG_SHADER_HEADER_FORWARD = """
     $(LayerShaders.SHADER_FRAG_HEADER)
     #define PASS_FORWARD 1
 
-    layout (location = 0) out vec3 fOut_color;
-    layout (location = 1) out vec3 fOut_emission;
-
     void finish(vec3 albedo, vec3 emissive,
                 float metallic, float roughness,
                 vec3 tangentSpaceNormal,

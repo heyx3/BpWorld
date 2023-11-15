@@ -38,11 +38,14 @@ end
 #####################################
 ##    Building Blocks
 
-const RELATIVE_PATH = "../assets/voxels"
-const COMMON_INCLUDE_CODE = """
+const RELATIVE_PATH = "../assets/layer_utils"
+const UTILS_INCLUDES = """
     #include <$RELATIVE_PATH/functions.shader>
     #include <$RELATIVE_PATH/noise.shader>
     #include <$RELATIVE_PATH/buffers.shader>
+"""
+const COMMON_DECLARATIONS = """
+    $UTILS_INCLUDES
 
     uniform vec3 $UNIFORM_WORLD_VOXEL_OFFSET,
                  $UNIFORM_WORLD_SCALE;
@@ -268,6 +271,12 @@ const FORWARD_FX_SHADER_CODE = """
     }
 """
 
+"Shader code describing the fragment-shader outputs"
+const FRAG_SHADER_OUTPUTS = """
+    layout (location = 0) out vec3 fOut_color;
+    layout (location = 1) out vec3 fOut_emission;
+"""
+
 
 #####################################
 
@@ -281,7 +290,7 @@ const FORWARD_FX_SHADER_CODE = """
 # Preview vertex shader:
 const SHADER_PREVIEW_VERT = """
     #line 3000
-    $COMMON_INCLUDE_CODE
+    $COMMON_DECLARATIONS
     #line 4000
 
     //Dynamically decide in the geometry shader whether each face of each voxel should be rendered.
@@ -302,7 +311,7 @@ const SHADER_PREVIEW_VERT = """
 # Preview goemetry shader:
 const SHADER_PREVIEW_GEOM = """
     #line 3000
-    $COMMON_INCLUDE_CODE
+    $COMMON_DECLARATIONS
     #line 4000
     $FRAG_SHADER_INPUT_PACKING
     #line 5000
@@ -380,7 +389,7 @@ const SHADER_PREVIEW_GEOM = """
 # Meshed vertex shader:
 const SHADER_MESHED_VERT = """
     #line 3000
-    $COMMON_INCLUDE_CODE
+    $COMMON_DECLARATIONS
     #line 4000
     $FRAG_SHADER_INPUT_PACKING
     #line 5000
@@ -402,13 +411,14 @@ const SHADER_MESHED_VERT = """
 # Header for all fragment shaders:
 const SHADER_FRAG_HEADER = """
     #line 3000
-    $COMMON_INCLUDE_CODE
+    $COMMON_DECLARATIONS
     #line 4000
     $FRAG_SHADER_INPUT_UNPACKING
     #line 5000
     $FORWARD_FX_SHADER_CODE
     #line 6000
     uniform float $UNIFORM_ELAPSED_SECONDS;
+    $FRAG_SHADER_OUTPUTS
     #line 7000
 """
 

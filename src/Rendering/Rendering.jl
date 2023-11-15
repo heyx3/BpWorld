@@ -12,6 +12,7 @@ include("layer_rendering.jl")
 include("layer_render_shaders.jl")
 
 include("shadowmap.jl")
+include("sky.jl")
 include("scene.jl")
 
 include("layer_render_models.jl")
