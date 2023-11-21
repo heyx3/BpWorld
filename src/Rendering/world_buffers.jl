@@ -7,11 +7,12 @@
     density::Float32
     dropoff::Float32
 
-    heightOffset::Float32
-    heightScale::Float32
+    height_offset::Float32
+    height_scale::Float32
 
     color::vRGBAf # Last component isn't used
 end
+const UBO_IDX_FOG = 1 # Shaders expect this to be set to 1
 
 @std140 struct UniformBlock_Viewport
     pos::v4f
@@ -40,6 +41,7 @@ UniformBlock_Viewport(cam::Cam3D{Float32}) = UniformBlock_Viewport(
       (m_view, m_proj, m_view_proj, m_invert(m_view_proj))
     end...
 )
+const UBO_IDX_VIEWPORT = 3 # Shaders expect this to be set to 3
 
 @std140 struct UniformBlock_Sun
     dir::v4f
@@ -50,40 +52,32 @@ UniformBlock_Viewport(cam::Cam3D{Float32}) = UniformBlock_Viewport(
 
     world_to_texel_mat::fmat4
 end
+const UBO_IDX_SUN = 2 # Shaders expect this to be set to 2
 
 
 ########################
 ##   Buffer Manager   ##
 ########################
 
-mutable struct SceneRenderBuffers
+mutable struct WorldDataBuffers
     #TOOD: Try using one big buffer with different byte ranges; B+ doesn't have its own test for that case
     buf_fog::Bplus.GL.Buffer
     buf_viewport::Bplus.GL.Buffer
     buf_sun::Bplus.GL.Buffer
 end
+@close_gl_resources(srb::WorldDataBuffers)
 
-function SceneRenderBuffers()
+function WorldDataBuffers()
     buf_fog = Bplus.GL.Buffer(true, sizeof(UniformBlock_Fog))
-    set_uniform_block(buf_fog, 1)
+    set_uniform_block(buf_fog, UBO_IDX_FOG)
 
     buf_sun = Bplus.GL.Buffer(true, sizeof(UniformBlock_Sun))
-    set_uniform_block(buf_sun, 2)
+    set_uniform_block(buf_sun, UBO_IDX_SUN)
 
     buf_viewport = Bplus.GL.Buffer(true, sizeof(UniformBlock_Viewport))
-    set_uniform_block(buf_viewport, 3)
-end
-function close(data::SceneRenderBuffers)
-    close(data.buf_fog)
-    close(data.buf_sun)
-    close(data.buf_viewport)
-end
+    set_uniform_block(buf_viewport, UBO_IDX_VIEWPORT)
 
-function update!(data::SceneRenderBuffers,
-                 fog::UniformBlock_Fog, sun::UniformBlock_Sun, view::UniformBlock_Viewport)
-    set_buffer_data(data.buf_fog, Ref(fog))
-    set_buffer_data(data.buf_viewport, Ref(view))
-    set_buffer_data(data.buf_sun, Ref(sun))
+    return WorldDataBuffers(buf_fog, buf_viewport, buf_sun)
 end
 
 

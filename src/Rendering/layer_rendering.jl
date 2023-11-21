@@ -72,15 +72,15 @@ function layer_renderer_close_layer(r::AbstractLayerRenderer,
     error("layer_renderer_close_layer(::", typeof(r), ") not implemented")
 end
 
-#TODO: Layer renderer should handle the output of the meshing algorithm.
-
 function layer_renderer_tick(r::AbstractLayerRenderer,
                              viewports::Dict{Viewport, <:AbstractLayerRendererViewport},
-                             layers::Dict{Int, <:AbstractLayerRendererLayer},
+                             layers::Dict{AbstractString, <:AbstractLayerRendererLayer},
                              scene,
                              delta_seconds::Float32)
     error("layer_renderer_tick(::", typeof(r), ") not implemented")
 end
+
+#TODO: Layer renderer should handle the mesher setup, output, and update (when new scene has the same layers).
 
 
 ##  Render passes  ##

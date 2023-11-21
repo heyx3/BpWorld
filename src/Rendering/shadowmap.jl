@@ -71,3 +71,7 @@ function prepare(shadowmap::Shadowmap,
         m4_translate(v3f(0.5, 0.5, 0.5))
     )
 end
+"Finalizes data after the shadow-map is rendered"
+function finish(shadowmap::Shadowmap)
+    glGenerateTextureMipmap(get_ogl_handle(shadowmap.depth_texture))
+end

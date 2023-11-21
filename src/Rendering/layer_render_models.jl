@@ -156,7 +156,7 @@ end
 
 function layer_renderer_tick(r::LayerRenderer_Common,
                              viewports::Dict{Viewport, <:AbstractLayerRendererViewport},
-                             layers::Dict{Int, <:AbstractLayerRendererLayer},
+                             layers::Dict{AbstractString, <:AbstractLayerRendererLayer},
                              scene::Scene,
                              delta_seconds::Float32)
     return nothing

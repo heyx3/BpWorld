@@ -47,6 +47,7 @@ end
 mutable struct Viewport
     cam::Cam3D{Float32}
     cam_settings::Cam3D_Settings{Float32}
+    size::v2i
 
     # Ping-pong between targets as needed (e.x. refractive materials want the result of opaque rendering)
     target_current::ViewportTarget
@@ -56,9 +57,9 @@ end
 
 function Viewport(cam::Cam3D{Float32},
                   settings::Cam3D_Settings{Float32},
-                  resolution::v2i = Bplus.GL.get_window_size())
+                  resolution::v2i)
     return Viewport(
-        cam, settings,
+        cam, settings, resolution,
         ViewportTarget(resolution), ViewportTarget(resolution)
     )
 end

@@ -17,8 +17,8 @@ using Bplus
 include("Utils/Utils.jl")
 using .Utils
 
-include("Voxels/Voxels.jl")
-using .Voxels
+include("Generation/Generation.jl")
+using .Generation
 
 include("Rendering/Rendering.jl")
 using .Rendering

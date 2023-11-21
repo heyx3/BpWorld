@@ -202,7 +202,7 @@ mutable struct VoxelMesherTask
                                      # Send 'true' to acknowledge, 'false' to kill the task.
 end
 
-function VoxelMesherTask(grid_size::v3i,
+function VoxelMesherTask(grid_size::Vec3{<:Integer},
                          grid_generator::Voxels.Generation.AbstractVoxelGenerator,
                          n_layers::Int,
                          buffers::VoxelMesher = VoxelMesher())
