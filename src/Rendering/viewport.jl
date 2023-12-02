@@ -1,15 +1,15 @@
 "A set of textures representing the output of the scene render"
 struct ViewportTarget
-    color::Texture
-    emissive::Texture
+    color::Optional{Texture}
+    emissive::Optional{Texture}
     depth::Texture
 
     target::Target
 end
 @close_gl_resources(t::ViewportTarget)
 
-function ViewportTarget(resolution::v2i)
-    tex_color = Texture(
+function ViewportTarget(resolution::v2i, depth_only::Bool)
+    tex_color = depth_only ? nothing : Texture(
         SimpleFormat(
             FormatTypes.normalized_uint,
             SimpleFormatComponents.RGB,
@@ -17,7 +17,7 @@ function ViewportTarget(resolution::v2i)
         ),
         resolution
     )
-    tex_emissive = Texture(
+    tex_emissive = depth_only ? nothing : Texture(
         SimpleFormat(
             FormatTypes.float,
             SimpleFormatComponents.RGB,
@@ -30,7 +30,7 @@ function ViewportTarget(resolution::v2i)
     )
 
     target = Target(
-        [ TargetOutput(tex=tex_color), TargetOutput(tex=tex_emissive) ],
+        depth_only ? [ ] : [ TargetOutput(tex=tex_color), TargetOutput(tex=tex_emissive) ],
         TargetOutput(tex=tex_depth)
     )
 
@@ -38,8 +38,12 @@ function ViewportTarget(resolution::v2i)
 end
 
 function copy_to(src::ViewportTarget, dest::ViewportTarget)
-    copy_tex_pixels(src.color, dest.color)
-    copy_tex_pixels(src.emissive, dest.emissive)
+    if exists(src.color) && exists(dest.color)
+        copy_tex_pixels(src.color, dest.color)
+    end
+    if exists(src.emissive) && exists(dest.emissive)
+        copy_tex_pixels(src.emissive, dest.emissive)
+    end
     copy_tex_pixels(src.depth, dest.depth)
 end
 
@@ -48,6 +52,7 @@ mutable struct Viewport
     cam::Cam3D{Float32}
     cam_settings::Cam3D_Settings{Float32}
     size::v2i
+    depth_only::Bool
 
     # Ping-pong between targets as needed (e.x. refractive materials want the result of opaque rendering)
     target_current::ViewportTarget
@@ -56,17 +61,23 @@ end
 @close_gl_resources(v::Viewport, (v.target_current, v.target_previous))
 
 function Viewport(cam::Cam3D{Float32},
-                  settings::Cam3D_Settings{Float32},
-                  resolution::v2i)
+                  cam_settings::Cam3D_Settings{Float32},
+                  resolution::v2i,
+                  depth_only::Bool = false)
     return Viewport(
-        cam, settings, resolution,
-        ViewportTarget(resolution), ViewportTarget(resolution)
+        cam, cam_settings, resolution, depth_only,
+        ViewportTarget(resolution, depth_only),
+        ViewportTarget(resolution, depth_only)
     )
 end
 
 function viewport_clear(viewport::Viewport)
-    target_clear(viewport.target_current, vRGBAf(0, 0, 0, 1), 1)
-    target_clear(viewport.target_current, vRGBAf(0, 0, 0, 1), 2)
+    if exists(viewport.target_current.color)
+        target_clear(viewport.target_current, vRGBAf(0, 0, 0, 1), 1)
+    end
+    if exists(viewport.target_current.emissive)
+        target_clear(viewport.target_current, vRGBAf(0, 0, 0, 1), 2)
+    end
     target_clear(viewport.target_current, @f32(0))
 end
 function viewport_swap(viewport::Viewport)
