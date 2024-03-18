@@ -1,4 +1,5 @@
-#TODO: Turn renderer_cache.jl into a general B+ disk-cache utility
+#NOTE: This utility has been added to B+, but there's no point in updating this code
+#         since a huge codebase refactor is waiting in another branch.
 
 "Checks all associated files' last modified timestamp, and returns whether any of them actually changed"
 function check_disk_modifications! end

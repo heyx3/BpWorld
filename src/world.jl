@@ -266,7 +266,7 @@ function update(world::World, delta_seconds::Float32, window::GLFW.Window)
     (world.cam, world.cam_settings) = cam_update(world.cam, world.cam_settings, cam_input, delta_seconds)
 
     # Update cached disk assets.
-    check_disk_modifications!(world.voxel_materials)
+    Voxels.check_disk_modifications!(world.voxel_materials)
 
     # Update the scene.
     Voxels.update(world.voxels, delta_seconds)

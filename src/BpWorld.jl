@@ -2,7 +2,7 @@ module BpWorld
 
 using Setfield, Base.Threads, StructTypes, JSON3
 
-using GLFW, ModernGLbp, CImGui,
+using GLFW, CImGui,
       ImageIO, FileIO, ColorTypes, FixedPointNumbers, ImageTransformations,
       CSyntax
 
@@ -10,8 +10,8 @@ using GLFW, ModernGLbp, CImGui,
 # I don't really understand why it was needed though.
 using PNGFiles, ImageMagick
 
-using Bplus
-@using_bplus
+using Bplus; @using_bplus
+const ModernGLbp = Bplus.GL.ModernGLbp
 
 
 include("Utils/Utils.jl")

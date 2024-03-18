@@ -2,11 +2,10 @@ module Utils
 
 using Setfield, Base.Threads,
       Suppressor, StructTypes, JSON3, CSyntax
-using GLFW, ModernGLbp, CImGui,
+using GLFW, CImGui,
       ImageIO, FileIO, ColorTypes, FixedPointNumbers, ImageTransformations
-using Bplus,
-      Bplus.Utilities, Bplus.Math, Bplus.GL,
-      Bplus.Helpers, Bplus.SceneTree, Bplus.Input
+using Bplus; @using_bplus
+const ModernGLbp = Bplus.GL.ModernGLbp
 #
 
 @decentralized_module_init

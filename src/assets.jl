@@ -108,7 +108,7 @@ struct UBO_Camera
     mat_projection::fmat4
     mat_view_proj::fmat4
     mat_inv_view_proj::fmat4
-    
+
 
     UBO_Camera(pos, forward, upward, rightward,
                near_clip, far_clip,
@@ -125,7 +125,7 @@ struct UBO_Camera
     )
     UBO_Camera(cam::Cam3D) = UBO_Camera(
         cam.pos,
-        let basis = Bplus.Helpers.cam_basis(cam)
+        let basis = cam_basis(cam)
             tuple(basis.forward, basis.up, basis.right)
         end...,
         min_inclusive(cam.clip_range), max_inclusive(cam.clip_range),

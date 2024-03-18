@@ -1,11 +1,10 @@
 module Voxels
     using Setfield, Base.Threads, Dates
     using StructTypes, JSON3,
-          GLFW, ModernGLbp, CImGui,
+          GLFW, CImGui,
           ImageIO, FileIO, ColorTypes, FixedPointNumbers, ImageTransformations
-    using Bplus,
-          Bplus.Utilities, Bplus.Math, Bplus.GL,
-          Bplus.Helpers, Bplus.SceneTree, Bplus.Input
+    using Bplus; @using_bplus
+    const ModernGLbp = Bplus.GL.ModernGLbp
     using ..Utils
 
 

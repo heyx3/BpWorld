@@ -2,10 +2,7 @@ module Generation
 
 using Setfield, DataStructures
 using ThreadedIterables, MacroTools
-using Bplus,
-      Bplus.Utilities, Bplus.Math, Bplus.GL,
-      Bplus.Helpers, Bplus.SceneTree, Bplus.Input,
-      Bplus.Fields
+using Bplus; @using_bplus
 using ..Voxels, ...Utils
 
 "Some technique for placing voxels in a world."
