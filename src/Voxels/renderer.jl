@@ -15,10 +15,10 @@ Provides 'depth' (for depth-prepass) and 'deferred' (for G-buffer pass) versions
 struct LayerMaterial
     depth_preview::Program
     deferred_preview::Program
-    
+
     depth_meshed::Program
     deferred_meshed::Program
-    
+
     # Each texture is mapped to its uniform name.
     textures::Dict{AbstractString, Texture}
 end

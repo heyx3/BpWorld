@@ -39,6 +39,29 @@ function main()::Nothing
         )
 
         SETUP = begin
+            # Print GPU info in debug builds.
+            @bpworld_debug begin
+                device = LOOP.context.device
+                println(stderr,
+                    "====== GPU: ", device.gpu_name, " ===========",
+                    "\nMeshes:",
+                    "\n\tRecommended max vertices: ", device.recommended_max_mesh_vertices,
+                    "\n\tRecommended max indices: ", device.recommended_max_mesh_indices,
+                    "\nUBO:",
+                    "\n\tMax global slots: ", device.n_uniform_block_slots,
+                    "\n\tMax VertShader slots: ", device.max_uniform_blocks_in_vertex_shader,
+                    "\n\tMax FragShader slots: ", device.max_uniform_blocks_in_fragment_shader,
+                    "\n\tMax block size: ", device.max_uniform_block_byte_size,
+                    "\nSSBO:",
+                    "\n\tMax global slots: ", device.n_storage_block_slots,
+                    "\n\tMax VertShader slots: ", device.max_storage_blocks_in_vertex_shader,
+                    "\n\tMax FragShader slots: ", device.max_storage_blocks_in_fragment_shader,
+                    "\n=============================================="
+                )
+            end
+
+            @check_gl_logs("starting the game")
+
             gui_nice_font_config = CImGui.ImFontConfig_ImFontConfig()
             unsafe_store!(gui_nice_font_config.OversampleH, Cint(8))
             unsafe_store!(gui_nice_font_config.OversampleV, Cint(8))
@@ -47,11 +70,13 @@ function main()::Nothing
                                                       16,
                                                       gui_nice_font_config)
             CImGui.ImFontConfig_destroy(gui_nice_font_config)
+            @check_gl_logs("finishing GUI font rendering")
 
             assets::Assets = Assets()
             world::World = World(LOOP.context.window, assets)
             view::PostProcess = PostProcess(LOOP.context.window, assets, world)
             gui::GUI = GUI(LOOP.context, assets, world, view, gui_nice_font)
+            @check_gl_logs("finishing most initialization")
 
             is_quit_confirming::Bool = false
 
@@ -61,7 +86,7 @@ function main()::Nothing
         end
 
         LOOP = begin
-            check_gl_logs("Top of loop")
+            @check_gl_logs("Top of loop")
             if GLFW.WindowShouldClose(LOOP.context.window)
                 break
             end

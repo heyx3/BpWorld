@@ -67,23 +67,6 @@ end
 "A generator that injects a value in between each element of another iterator"
 @inline intersperse(iter, separator) = Iterators.flatten(Iterators.zip(iter, Iterators.repeated(separator)))
 
-
-"Checks and prints any messages/errors from OpenGL. Does nothing in release mode."
-function check_gl_logs(context::String)
-    @bpworld_debug for log in pull_gl_logs()
-        if log.severity in (DebugEventSeverities.high, DebugEventSeverities.medium)
-            @error "While $context. $(sprint(show, log))"
-        elseif log.severity == DebugEventSeverities.low
-            @warn "While $context. $(sprint(show, log))"
-        elseif log.severity == DebugEventSeverities.none
-            @info "While $context. $(sprint(show, log))"
-        else
-            error("Unhandled case: ", log.severity)
-        end
-    end
-    return nothing
-end
-
 include("shaders.jl")
 include("textures.jl")
 
@@ -91,7 +74,6 @@ include("textures.jl")
 export @bpworld_assert, @bpworld_debug,
        @omit_type,
        intersperse,
-       check_gl_logs,
        ROOT_PATH,
        VOXEL_LAYERS_PATH, ASSETS_PATH, SCENES_PATH,
        SCENES_EXTENSION,

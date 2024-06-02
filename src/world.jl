@@ -195,7 +195,7 @@ function World(window::GLFW.Window, assets::Assets)
     g_buffer_data = set_up_g_buffer(window_size)
     sun_shadowmap_data = set_up_sun_shadowmap(v2i(1024, 1024))
 
-    check_gl_logs("After world initialization")
+    @check_gl_logs("After world initialization")
     return World(
         voxel_scene,
         nothing,
@@ -212,9 +212,11 @@ function World(window::GLFW.Window, assets::Assets)
         Cam3D{Float32}(
             pos=v3f(30, -30, 670),
             forward=vnorm(v3f(1, 1, -0.2)),
-            clip_range=IntervalF(min=0.05, max=1000),
-            fov_degrees=@f32(100),
-            aspect_width_over_height=@f32(window_size.x / window_size.y)
+            projection = PerspectiveProjection{Float32}(
+                clip_range=IntervalF(min=0.05, max=1000),
+                vertical_fov_degrees=@f32(100),
+                aspect_width_over_height=@f32(window_size.x / window_size.y)
+            )
         ),
         Cam3D_Settings{Float32}(
             move_speed=@f32(50),
@@ -391,7 +393,7 @@ function render(world::World, assets::Assets)
     voxels_world_center = voxels_world_range / v3f(Val(2))
     # Make a view matrix for the sun looking at that frustum:
     sun_world_pos = voxels_world_center
-    @set! sun_world_pos -= world.sun.dir * max_exclusive(world.cam.clip_range)
+    @set! sun_world_pos -= world.sun.dir * max_exclusive(world.cam.projection.clip_range)
     mat_sun_view::fmat4 = m4_look_at(sun_world_pos, sun_world_pos + world.sun.dir,
                                      get_up_vector())
     # Get the bounds of the frustum in the sun's view space:

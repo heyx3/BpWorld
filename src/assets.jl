@@ -20,11 +20,16 @@ function compile_shaders( vert::AbstractString, frag::AbstractString
     )
 end
 "An alternative to `compile_shaders()` that takes file paths instead of shader text"
-compile_shader_files(vert::AbstractString, frag::AbstractString; kw...) = compile_shaders(
-    String(open(read, joinpath(ASSETS_PATH, vert))),
-    String(open(read, joinpath(ASSETS_PATH, frag)))
-    ; kw...
-)
+compile_shader_files(vert::AbstractString, frag::AbstractString; kw...) = begin
+    @check_gl_logs("Before $vert and $frag")
+    p = compile_shaders(
+        String(open(read, joinpath(ASSETS_PATH, vert))),
+        String(open(read, joinpath(ASSETS_PATH, frag)))
+        ; kw...
+    )
+    @check_gl_logs("After $vert and $frag")
+    return p
+end
 compile_shader_files(name_without_ext::AbstractString; kw...) = compile_shader_files(
     "$name_without_ext.vert",
     "$name_without_ext.frag"
@@ -128,7 +133,7 @@ struct UBO_Camera
         let basis = cam_basis(cam)
             tuple(basis.forward, basis.up, basis.right)
         end...,
-        min_inclusive(cam.clip_range), max_inclusive(cam.clip_range),
+        min_inclusive(cam.projection.clip_range), max_inclusive(cam.projection.clip_range),
         cam_view_mat(cam), cam_projection_mat(cam)
     )
 end
@@ -199,18 +204,18 @@ end
 function load_all_buffers()::Tuple
     return tuple(
         # Set each buffer's UBO binding index as it's created.
-        let b = Buffer(true, [ UBO_Fog(0, 0, 0, 0, zero(vRGBf)) ])
+        let b = Buffer(true, UBO_Fog(0, 0, 0, 0, zero(vRGBf)))
             set_uniform_block(b, UBO_IDX_FOG)
             b
         end,
-        let b = Buffer(true, [ UBO_Light(zero(v3f), zero(vRGBf), Bplus.GL.Ptr_View(), 0, zero(fmat4)) ])
+        let b = Buffer(true, UBO_Light(zero(v3f), zero(vRGBf), Bplus.GL.Ptr_View(), 0, zero(fmat4)))
             set_uniform_block(b, UBO_IDX_LIGHT)
             b
         end,
-        let b = Buffer(true, [ UBO_Camera(zero(v3f), zero(v3f), zero(v3f), zero(v3f),
-                                          0, 0,
-                                          zero(fmat4), zero(fmat4),
-                                          zero(fmat4), zero(fmat4)) ])
+        let b = Buffer(true, UBO_Camera(zero(v3f), zero(v3f), zero(v3f), zero(v3f),
+                                        0, 0,
+                                        zero(fmat4), zero(fmat4),
+                                        zero(fmat4), zero(fmat4)))
             set_uniform_block(b, UBO_IDX_CAMERA)
             b
         end
@@ -223,7 +228,7 @@ function Assets()
     shaders::Tuple = load_all_shaders()
     buffers::Tuple = load_all_buffers()
 
-    check_gl_logs("After asset initialization")
+    @check_gl_logs("After asset initialization")
     return Assets(textures..., shaders..., buffers...)
 end
 
@@ -241,11 +246,11 @@ const G_BUFFER_SAMPLER = TexSampler{2}(
 
 function update_buffers(assets::Assets, gui_fog, gui_sun, cam,
                         shadowmap, world_pos_to_sun_texel::fmat4)
-    set_buffer_data(assets.ubo_buffer_fog, [ UBO_Fog(gui_fog) ])
-    set_buffer_data(assets.ubo_buffer_sun, [ UBO_Light(gui_sun.dir, gui_sun.color,
-                                                       shadowmap, @f32(10),
-                                                       world_pos_to_sun_texel) ])
-    set_buffer_data(assets.ubo_buffer_cam, [ UBO_Camera(cam) ])
+    set_buffer_data(assets.ubo_buffer_fog, UBO_Fog(gui_fog))
+    set_buffer_data(assets.ubo_buffer_sun, UBO_Light(gui_sun.dir, gui_sun.color,
+                                                     shadowmap, @f32(10),
+                                                     world_pos_to_sun_texel))
+    set_buffer_data(assets.ubo_buffer_cam, UBO_Camera(cam))
 end
 
 function prepare_program_lighting( assets::Assets,
@@ -269,8 +274,8 @@ function prepare_program_lighting( assets::Assets,
         ("u_gBuffer.surface", get_view(tex_surface, G_BUFFER_SAMPLER)),
 
         ("u_camera.pos", cam.pos),
-        ("u_camera.nearClip", min_inclusive(cam.clip_range)),
-        ("u_camera.farClip", max_inclusive(cam.clip_range)),
+        ("u_camera.nearClip", min_inclusive(cam.projection.clip_range)),
+        ("u_camera.farClip", max_inclusive(cam.projection.clip_range)),
         ("u_camera.forward", cam.forward),
         ("u_camera.up", cam.up),
         ("u_camera.right", cam_rightward(cam)),
