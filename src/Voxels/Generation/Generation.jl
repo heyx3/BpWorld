@@ -1,7 +1,7 @@
 module Generation
 
 using Setfield, DataStructures
-using ThreadedIterables, MacroTools
+using MacroTools
 using Bplus; @using_bplus
 using ..Voxels, ...Utils
 
