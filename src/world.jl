@@ -259,6 +259,8 @@ function start_new_scene(renderer::Renderer.Scene, new_contents::AbstractString,
     return nothing
 end
 
+TODO: Start converting from here
+
 
 "Renders a depth-only pass using the given view/projection matrices."
 function render_depth_only(world::World, assets::Assets, mat_viewproj::fmat4)

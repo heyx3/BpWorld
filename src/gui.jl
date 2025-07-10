@@ -37,7 +37,9 @@ end
 """The "main region" is for the normal, user-facing UI"""
 function gui_main_region(gui::GUI, assets::Assets, world::World, view::PostProcess)
     gui_with_font(gui.nice_font) do
-        gui_window("Main") do
+        CImGui.SetNextWindowPos((5, 5))
+        CImGui.SetNextWindowSize((425, 800))
+        gui_window("Main", C_NULL, CImGui.LibCImGui.ImGuiWindowFlags_NoDecoration) do
             gui_within_fold("Sun") do
                 gui_sun(world.sun, world.sun_gui)
             end
