@@ -1,6 +1,16 @@
+"""
+Defines the shader code common to all lighting models.
+
+Note: non-meshed versions of shaders are referred to as "preview" shaders.
+"""
 module LayerShaders
 
-# Note: non-meshed versions of shaders are referred to as "preview" shaders.
+export SHADER_PREVIEW_VERT, SHADER_PREVIEW_GEOM,
+       SHADER_MESHED_VERT,
+       SHADER_FRAG_HEADER,
+       UNIFORM_WORLD_VOXEL_OFFSET, UNIFORM_WORLD_SCALE, UNIFORM_MATRIX_VIEWPROJ,
+       UNIFORM_ELAPSED_SECONDS,
+       UNIFORM_PREVIEW_VOXEL_COUNT, UNIFORM_PREVIEW_VOXEL_LAYER_IDX, UNIFORM_PREVIEW_VOXEL_TEX
 
 
 #####################################
@@ -423,14 +433,5 @@ const SHADER_FRAG_HEADER = """
 """
 
 ###############################
-
-
-export SHADER_PREVIEW_VERT, SHADER_PREVIEW_GEOM,
-       SHADER_MESHED_VERT,
-       SHADER_FRAG_HEADER,
-       UNIFORM_WORLD_VOXEL_OFFSET, UNIFORM_WORLD_SCALE, UNIFORM_MATRIX_VIEWPROJ,
-       UNIFORM_ELAPSED_SECONDS,
-       UNIFORM_PREVIEW_VOXEL_COUNT, UNIFORM_PREVIEW_VOXEL_LAYER_IDX, UNIFORM_PREVIEW_VOXEL_TEX
-
 
 end # module

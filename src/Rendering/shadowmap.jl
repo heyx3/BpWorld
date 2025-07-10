@@ -1,8 +1,7 @@
 "A shadowmap for a directional light"
 mutable struct Shadowmap
-    # The view-projection matrix for the light's point-of-view.
     mat_view_proj::fmat4
-    mat_world_to_texel::fmat4
+    mat_world_to_texel::fmat4 # ViewProj followed by a transform from NDC to UV
 
     depth_texture::Texture
     render_target::Target
@@ -31,7 +30,7 @@ function Shadowmap(resolution::Union{Integer, Vec2{<:Integer}},
     )
     target = Target(TargetOutput(tex=tex))
 
-    return Shadowmap(m4_identityf(), tex, target)
+    return Shadowmap(m4_identityf(), m4_identityf(), tex, target)
 end
 
 "Recalculates the light's projection matrix and clears its shadow-map"

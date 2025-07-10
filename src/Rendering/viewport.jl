@@ -1,4 +1,4 @@
-"A set of textures representing the output of the scene render"
+"A set of textures representing the output of the scene render, possibly depth-only"
 struct ViewportTarget
     color::Optional{Texture}
     emissive::Optional{Texture}
@@ -78,7 +78,7 @@ function viewport_clear(viewport::Viewport)
     if exists(viewport.target_current.emissive)
         target_clear(viewport.target_current, vRGBAf(0, 0, 0, 1), 2)
     end
-    target_clear(viewport.target_current, @f32(0))
+    target_clear(viewport.target_current, @f32(1))
 end
 function viewport_swap(viewport::Viewport)
     copy_to(viewport.target_current, viewport.target_previous)

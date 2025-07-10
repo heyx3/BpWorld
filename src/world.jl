@@ -90,9 +90,8 @@ end
 function Base.close(s::World)
     # Try to close() everything that isnt specifically blacklisted.
     # This is the safest option to avoid leaks.
-    blacklist = tuple(:total_seconds,
-                      :sun, :sun_gui, :fog, :fog_gui, :scene, :scene_gui,
-                      :cam, :cam_settings, :is_mouse_captured, :total_seconds)
+    blacklist = tuple(:total_seconds, :is_mouse_captured,
+                      :sun, :sun_gui, :fog, :fog_gui, :scene, :scene_gui)
     whitelist = setdiff(fieldnames(typeof(s)), blacklist)
     for field in whitelist
         v = getfield(s, field)

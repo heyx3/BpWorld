@@ -3,7 +3,7 @@ struct LayerRendererViewportBasic <: AbstractLayerRendererViewport end
 
 
 ###################################################
-##    Common (CookTorrance, dielectric and metal)
+##    Common (CookTorrance; dielectric and metal)
 
 "Data definition of a layer lit with the Common model."
 @kwdef struct LightingModel_Common <: AbstractLayerDataLightingModel
@@ -122,19 +122,19 @@ function layer_renderer_init_layer(r::LayerRenderer_Common,
         SHADER_PREVIEW_VERT, SHADER_MESHED_VERT, SHADER_PREVIEW_GEOM,
 
         replace("""
-        $COMMON_MODEL_FRAG_SHADER_HEADER_FORWARD
-        $frag_defines
-        #line 0
-        $fragment_shader_body
+            $COMMON_MODEL_FRAG_SHADER_HEADER_FORWARD
+            $frag_defines
+            #line 0
+            $fragment_shader_body
         """, "\n        "=>"\n"),
 
         replace("""
-        #line 10000
-        $COMMON_MODEL_FRAG_SHADER_HEADER_DEPTH
-        #line 1000
-        $frag_defines
-        #line 0
-        $fragment_shader_body
+            #line 10000
+            $COMMON_MODEL_FRAG_SHADER_HEADER_DEPTH
+            #line 1000
+            $frag_defines
+            #line 0
+            $fragment_shader_body
         """, "\n        "=>"\n"),
     ))
 
@@ -196,9 +196,20 @@ function layer_renderer_execute(renderer::LayerRenderer_Common,
         # Decide which shader to use for this pass and layer.
         has_mesh::Bool = exists(layer_mesh)
         depth_only = (pass_info.type in (Pass.depth, Pass.shadow_map))
-        prog::Program = (layer_assets.depth_preview, layer_assets.depth_meshed,
-                         layer_assets.forward_preview, layer_assets.forward_meshed
-                        )[1 + (has_mesh ? 1 : 0) + (depth_only ? 0 : 2)]
+        prog::Program =
+            if has_mesh
+                if depth_only
+                    layer_assets.depth_meshed
+                else
+                    layer_assets.forward_meshed
+                end
+            else
+                if depth_only
+                    layer_assets.depth_preview
+                else
+                    layer_assets.forward_preview
+                end
+            end
 
         # Set global uniforms.
         set_universal_uniforms(prog,

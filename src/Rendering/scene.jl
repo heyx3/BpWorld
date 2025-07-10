@@ -1,3 +1,4 @@
+"A renderable voxel world, and the viewports that are rendering it"
 mutable struct Scene
     voxels_array::VoxelGrid
     voxels::Texture # 3D texture of R8
@@ -177,7 +178,6 @@ end
 
 layer_idx(scene::Scene, layer_name::String) = findfirst(n -> n==layer_name, scene.layer_files)
 
-error("#TODO: Check how shadow-map passes work. They don't even have a viewport do they?")
 function render_pass(s::Scene, v::Viewport, pass_info::PassInfo, settings::RenderSettings)
     # Sort renderers by their order.
     #TODO: Re-use a buffer stored in the Scene.

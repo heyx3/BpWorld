@@ -49,7 +49,7 @@ const SKY_SHADER_FRAG = """
 
 Sky() = new(
     Program(SKY_SHADER_VERT, SKY_SHADER_FRAG),
-    @f32(10) # Sun emissive brightness
+    @f32(10)
 )
 
 function render_sky(sky::Sky, total_elapsed_seconds::Float32)
