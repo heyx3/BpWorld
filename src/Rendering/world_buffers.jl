@@ -68,40 +68,31 @@ end
 @close_gl_resources(srb::WorldDataBuffers)
 
 function WorldDataBuffers()
-    buf_fog = Bplus.GL.Buffer(true, sizeof(UniformBlock_Fog))
+    buf_fog = Bplus.GL.Buffer(true, UniformBlock_Fog)
     set_uniform_block(buf_fog, UBO_IDX_FOG)
 
-    buf_sun = Bplus.GL.Buffer(true, sizeof(UniformBlock_Sun))
+    buf_sun = Bplus.GL.Buffer(true, UniformBlock_Sun)
     set_uniform_block(buf_sun, UBO_IDX_SUN)
 
-    buf_viewport = Bplus.GL.Buffer(true, sizeof(UniformBlock_Viewport))
+    buf_viewport = Bplus.GL.Buffer(true, UniformBlock_Viewport)
     set_uniform_block(buf_viewport, UBO_IDX_VIEWPORT)
 
     return WorldDataBuffers(buf_fog, buf_viewport, buf_sun)
 end
 
 
-#######################
-##   Buffer Shader   ##
-#######################
+############################
+##   Buffer Shader code   ##
+############################
 
-const SHADER_SNIPPET_WORLD_BUFFERS = string(
-    glsl_decl(UniformBlock_Fog, GLSLBlockDecl(
-        glsl_name = "u_fog",
-        open_gl_name = "UniformBlockFog",
-        type = "uniform",
-        layout_qualifiers = "binding=0"
-    )),
-    glsl_decl(UniformBlock_Viewport, GLSLBlockDecl(
-        glsl_name = "u_viewport",
-        open_gl_name = "UniformBlockViewport",
-        type = "uniform",
-        layout_qualifiers = "binding=1"
-    )),
-    glsl_decl(UniformBlock_Sun, GLSLBlockDecl(
-        glsl_name = "u_sun",
-        open_gl_name = "UniformBlockSun",
-        type = "uniform",
-        layout_qualifiers = "binding=2"
-    ))
-)
+const SHADER_SNIPPET_WORLD_BUFFERS = """
+    layout(std140, binding=0) uniform UniformBlockFog {
+        $(glsl_decl(UniformBlock_Fog))
+    } u_fog;
+    layout(std140, binding=1) uniform UniformBlockViewport {
+        $(glsl_decl(UniformBlock_Viewport))
+    } u_viewport;
+    layout(std140, binding=2) uniform UniformBlockSun {
+        $(glsl_decl(UniformBlock_Sun))
+    } u_sun;
+"""

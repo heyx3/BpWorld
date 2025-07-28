@@ -82,3 +82,34 @@ function process_shader_contents(str::AbstractString, insert_at_top::AbstractStr
 
     return str
 end
+
+"
+Compiles a shader for this project, handling `#include`s (crudely; relative to 'assets' folder)
+    and applying `SHADER_CUTOFF_TOKEN`.
+"
+function compile_shaders( vert::AbstractString, frag::AbstractString
+                          ;
+                          insert_above_code::AbstractString = "",
+                          program_kw...
+                        )
+    vert2 = process_shader_contents(vert, insert_above_code)
+    frag2 = process_shader_contents(frag, insert_above_code)
+    try
+        return Program(vert2, frag2; program_kw...)
+    catch e
+        print("\n\nVERT:\n", vert2)
+        print("\n\n\nFRAG:\n", frag2)
+        rethrow()
+    end
+end
+"An alternative to `compile_shaders()` that takes file paths instead of shader text"
+compile_shader_files(vert::AbstractString, frag::AbstractString; kw...) = compile_shaders(
+    String(open(read, joinpath(ASSETS_PATH, vert))),
+    String(open(read, joinpath(ASSETS_PATH, frag)))
+    ; kw...
+)
+compile_shader_files(name_without_ext::AbstractString; kw...) = compile_shader_files(
+    "$name_without_ext.vert",
+    "$name_without_ext.frag"
+    ; kw...
+)

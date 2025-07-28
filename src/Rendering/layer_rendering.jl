@@ -36,7 +36,7 @@ abstract type AbstractLayerRendererLayer end
 ##  Lifetime management  ##
 
 "Creates a layer renderer for instances of the given kind of lighting model"
-function layer_renderer_init(T::Type{<:AbstractLayerDataLightingModel},
+function layer_renderer_init(model::AbstractLayerDataLightingModel,
                              scene,
                             )::AbstractLayerRenderer
     error("layer_renderer_init() not defined for ", T)
@@ -80,7 +80,8 @@ function layer_renderer_tick(r::AbstractLayerRenderer,
     error("layer_renderer_tick(::", typeof(r), ") not implemented")
 end
 
-#TODO: Layer renderer should handle the mesher setup, output, and update (when new scene has the same layers).
+#TODO: Layer renderer should handle the mesher setup, output, and update (when new scene has the same layers),
+##       by defining an 'AbstractLayerRendererMesher'
 
 
 ##  Render passes  ##
@@ -100,6 +101,16 @@ layer_renderer_order(r::AbstractLayerRenderer, pass_info::PassInfo)::Int = error
 "Whether a renderer needs to sample from one of the previous passes' textures, for things like refraction"
 layer_renderer_reads_target(r::AbstractLayerRenderer, pass_info::PassInfo)::Bool = error("layer_renderer_reads_target(::", typeof(r), ") not implemented")
 
+
+"The data about a layer being rendered right now"
+struct LayerRenderExecution{TData<:AbstractLayerRendererLayer}
+    idx::Int
+    def::LayerDefinition
+    finished_mesh::Optional{LayerMesh}
+    uniform_tex_views::Dict{String, Bplus.GL.View}
+    custom_data::TData
+end
+
 "
 Executes a renderer on the given layers, for the given pass.
 Note that activation/deactivation of the layers' texture uniforms will be handled for you.
@@ -108,9 +119,9 @@ function layer_renderer_execute(r::AbstractLayerRenderer,
                                 viewport::Viewport,
                                 viewport_assets::AbstractLayerRendererViewport,
                                 # All the layer data, including a lookup of textures by uniform name.
-                                layers::Vector{<:Tuple{Int, LayerDefinition, Optional{LayerMesh},
-                                                       Dict{String, Bplus.GL.View}, AbstractLayerRendererLayer}},
+                                layers::Vector{LayerRenderExecution{TLayerData}},
                                 scene,
-                                pass_info::PassInfo)
-    error("layer_renderer_execute(::", typeof(r), ", ...) not implemented")
+                                pass_info::PassInfo
+                               )::Nothing where {TLayerData}
+    error("layer_renderer_execute(::", typeof(r), ", ..., ::", typeof(layers), ", ...) not implemented")
 end

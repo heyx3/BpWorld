@@ -1,3 +1,4 @@
 {
-    "frag_shader_path": "ERR/err.frag"
+    "frag_shader_path": "ERR/err.frag",
+    "lighting_model": "common"
 }

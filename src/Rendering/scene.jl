@@ -1,6 +1,6 @@
 "A renderable voxel world, and the viewports that are rendering it"
 mutable struct Scene
-    voxels_array::VoxelGrid
+    voxels_array::AbstractVoxelGrid
     voxels::Texture # 3D texture of R8
     voxel_meshing::Optional{VoxelMesherTask} # Nulled out once it's finished
 
@@ -12,9 +12,9 @@ mutable struct Scene
     layer_files::Vector{String}
     layer_meshes::Vector{Optional{LayerMesh}}
     viewports::Set{Viewport}
-    renderers::Set{AbstractLayerRender}
+    renderers::Set{AbstractLayerRenderer}
 
-    renderers_by_model::Dict{Symbol, AbstractLayerRender}
+    renderers_by_model::Dict{Symbol, AbstractLayerRenderer}
 
     # Each renderer has some asset data per-layer and per-viewport.
     renderer_layer_assets::Dict{AbstractLayerRenderer, Dict{AbstractString, <:AbstractLayerRendererLayer}}
@@ -55,7 +55,7 @@ function Scene()
     )
     cache_error_layer = LayerDefinition(
         "ERR/err.frag",
-        :simple_solid,
+        LightingModel_Common(),
         Dict(),
         Dict()
     )
@@ -81,13 +81,13 @@ function Scene()
     )
     cache_layers = FileCacher{LayerDefinition}(
         reload_response = (path, old::Optional{LayerDefinition} = nothing) -> begin
-            return open(io -> begin
+            return open(path) do io
                 result = JSON3.read(io, LayerDefinition)
                 dependencies = tuple(
                     joinpath(VOXEL_LAYERS_PATH, result.frag_shader_path)
                 )
                 return (result, dependencies)
-            end)
+            end
         end,
         error_response = (path, exception, trace, old::Optional{Texture} = nothing) -> begin
             @error(
@@ -100,7 +100,7 @@ function Scene()
         check_interval_ms = 1000:3000
     )
 
-    return new(
+    return Scene(
         Array{VoxelElement}(undef, 0, 0, 0),
         Texture(SimpleFormat(FormatTypes.uint, SimpleFormatComponents.R, SimpleFormatBitDepths.B8),
                 one(v3u)),
@@ -114,9 +114,9 @@ function Scene()
         Vector{String}(), Vector{LayerMesh}(),
         Set{Viewport}(), Set{AbstractLayerRenderer}(),
 
-        Dict{Symbol, AbstractLayerRender}(),
+        Dict{Symbol, AbstractLayerRenderer}(),
         Dict{AbstractLayerRenderer, Dict{AbstractString, <:AbstractLayerRendererLayer}}(),
-        Dict{AbstractLayerRender, Dict{Viewport, <:AbstractLayerRendererViewport}}(),
+        Dict{AbstractLayerRenderer, Dict{Viewport, <:AbstractLayerRendererViewport}}(),
 
         cache_textures,
         cache_layers,
@@ -149,9 +149,9 @@ end
 
 
 "Gets the renderer for the given lighting model, creating one if needed"
-function ensure_renderer(scene::Scene, model_name::Symbol, model::AbstractLayerDataLightingModel)::AbstractLayerRenderer
+function ensure_renderer(scene::Scene, model_name::Symbol, model_def::AbstractLayerDataLightingModel)::AbstractLayerRenderer
     return get!(scene.renderers_by_model, model_name) do
-        renderer = layer_renderer_init(model, scene)
+        renderer = layer_renderer_init(model_def, scene)
 
         push!(scene.renderers, renderer)
         scene.renderer_viewport_assets[renderer] = Dict{Viewport, AbstractLayerRendererViewport}()
@@ -208,7 +208,7 @@ function render_layers(renderer::AbstractLayerRenderer,
     #TODO: Re-use buffers (stored in the Scene) for this work.
     relevant_layer_idcs::Vector{Int} = sort((layer_idx(scene, n) for n in keys(scene.renderer_layer_assets[renderer])))
     relevant_layer_data = map(relevant_layer_idcs) do i
-        return (
+        return LayerRenderExecution(
             i,
             get_layer_data(scene, scene.layer_files[i]),
             scene.layer_meshes[i],
@@ -235,17 +235,17 @@ end
 function add_layer(scene::Scene, layer_data_path::String)::LayerDefinition
     layer_data::LayerDefinition = get_cached_data!(scene.cache_layers, layer_data_path)
 
-    # Push the layer into the scene.
-    push!(scene.layer_files, layer_data_path)
-    push!(scene.layer_meshes, nothing)
-    layer_idx::Integer = length(scene.layer_files)
-
-    # Tell the corresponding renderer about the new layer.
+    # Get/create the correct renderer and tell it about this new layer.
     lighting_model_name::Symbol = lighting_model_serialized_name(typeof(layer_data.lighting_model))
     renderer = ensure_renderer(scene, lighting_model_name, layer_data.lighting_model)
     scene.renderer_viewport_assets[renderer][layer_idx] = layer_renderer_init_layer(
         renderer, layer_data, scene
     )
+
+    # Push the layer into the scene.
+    push!(scene.layer_files, layer_data_path)
+    push!(scene.layer_meshes, nothing)
+    layer_idx::Integer = length(scene.layer_files)
 
     return layer_data
 end
@@ -274,7 +274,7 @@ end
 
 "Refreshes this scene to start using the given voxel generator and layer file paths"
 function reset_scene(scene::Scene,
-                     generator::Voxels.AbstractVoxelGenerator,
+                     generator::Generation.AbstractVoxelGenerator,
                      new_layer_files::AbstractVector{<:AbstractString},
                      voxel_resolution::Vec3{<:Integer})
     # (Re)start the scene meshing task.
@@ -310,8 +310,10 @@ function add_viewport( scene::Scene,
                        resolution::v2i = Bplus.GL.get_window_size()
                      )::Viewport
     # Create the viewport.
-    @set! cam.aspect_width_over_height = resolution.x / @f32(resolution.y)
-    viewport = Viewport(cam, settings, resolution)
+    viewport = let view_cam = cam
+        @set! view_cam.projection.aspect_width_over_height = resolution.x / @f32(resolution.y)
+        Viewport(view_cam, settings, resolution)
+    end
 
     # Register with all renderers.
     for renderer in scene.renderers
@@ -335,18 +337,22 @@ function remove_viewport(scene::Scene, viewport::Viewport)
     close(viewport)
 end
 
+"
+Call this once per program frame, paired with a call to `end_scene_frame()`.
+Render any number of viewports between the two calls with `render_viewport()`.
+"
 function begin_scene_frame(s::Scene,
                            delta_seconds::Float32, total_elapsed_seconds::Float32,
                            sun_data::@NamedTuple{dir::v3f, color::vRGBf, shadow_bias::Float32},
                            fog_data::UniformBlock_Fog)
     # Update uniform buffers.
-    set_buffer_data(s.data_buffers.buf_fog, Ref(fog_data))
-    set_buffer_data(s.data_buffers.buf_sun, Ref(UniformBlock_Sun(
+    set_buffer_data(s.data_buffers.buf_fog, fog_data)
+    set_buffer_data(s.data_buffers.buf_sun, UniformBlock_Sun(
         vappend(sun_data.dir, @f32(0)), vappend(sun_data.color, @f32(0)),
         get_ogl_handle(get_view(s.sun_shadowmap.depth_texture)),
         shadow_bias,
         s.sun_shadowmap.mat_world_to_texel
-    )))
+    ))
 
     # Update file caches.
     check_disk_modifications!(scene.cache_layers)
@@ -355,7 +361,7 @@ function begin_scene_frame(s::Scene,
     # Update any meshing work going on.
     update_meshing(
         s.voxel_meshing,
-        new_grid::VoxelGrid -> begin
+        new_grid::AbstractVoxelGrid -> begin
             println("Voxel scene is completed! Uploading into texture...")
             s.voxels_array = new_grid
             @time set_tex_color(s.voxels, s.voxels_array)
@@ -405,6 +411,11 @@ function begin_scene_frame(s::Scene,
         view_activate(s.voxels)
     end
 end
+
+"
+Call this once per program frame, paired with a call to `begin_scene_frame()`.
+Render any number of viewports between the two calls with `render_viewport()`.
+"
 function end_scene_frame(s::Scene)
     # Deactivate texture views for all layer textures, and the voxel data texture if it was activated.
     for layer_textures in @view(s.internal_layer_texture_views[1:n_layers])
@@ -423,7 +434,7 @@ Make sure to call `begin_scene_frame()` before invoking this function,
 function render_viewport(s::Scene, v::Viewport, total_elapsed_seconds::Float32,
                          settings::RenderSettings)
     # Provide the viewport data as a uniform buffer.
-    set_buffer_data(s.data_buffers.buf_viewport, Ref(UniformBlock_Viewport(v.cam)))
+    set_buffer_data(s.data_buffers.buf_viewport, UniformBlock_Viewport(v.cam))
 
     viewport_clear(v)
 

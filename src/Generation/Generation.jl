@@ -1,12 +1,13 @@
 module Generation
 
 using Setfield, DataStructures
-using ThreadedIterables, MacroTools
-using Bplus,
-      Bplus.Utilities, Bplus.Math, Bplus.GL,
-      Bplus.Helpers, Bplus.SceneTree, Bplus.Input,
-      Bplus.Fields
-using ..Voxels, ...Utils
+using MacroTools
+
+using Bplus; @using_bplus
+
+using ..Utils
+using ..BpWorld: VoxelGrid, VoxelElement, EMPTY_VOXEL, AbstractVoxelGrid
+
 
 "Some technique for placing voxels in a world."
 abstract type AbstractVoxelGenerator end
@@ -18,7 +19,7 @@ abstract type AbstractVoxelGenerator end
 Runs a voxel generator on a grid.
 You can also control whether threading is allowed or not.
 "
-generate!(grid::VoxelGrid, v::AbstractVoxelGenerator, use_threads::Bool) = error("generate!() not implemented for ", typeof(v))
+generate!(grid::AbstractVoxelGrid, v::AbstractVoxelGenerator, use_threads::Bool) = error("generate!() not implemented for ", typeof(v))
 "
 Runs a voxel generator on a grid and returns it.
 You can also control whether threading is allowed or not.
@@ -26,7 +27,7 @@ You can also control whether threading is allowed or not.
 function generate(grid_size::Vec3{<:Integer},
                   v::AbstractVoxelGenerator,
                   use_threads::Bool)
-    grid = ConcreteVoxelGrid(undef, grid_size.data)
+    grid = VoxelGrid(undef, grid_size.data)
     generate!(grid, v, use_threads)
     return grid
 end

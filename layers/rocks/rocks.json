@@ -1,4 +1,5 @@
 {
+    "lighting_model": "common",
     "frag_shader_path": "rocks/rocks.frag",
     "textures": {
         "rocks/rocks-Albedo.png": {

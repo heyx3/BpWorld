@@ -44,7 +44,7 @@ const LIGHTING_MODEL_TYPE_KEY = :model
 lighting_model_serialized_name(T::Type{<:AbstractLayerDataLightingModel})::Symbol = error(T, " doesn't implement lighting_model_serialized_name()")
 lighting_model_type(::Val{SerializedName}) where {SerializedName} = error("Lighting model '", SerializedName, "' doesn't exist (names are case-sensitive!)")
 
-StructTypes.StructType(::Type{AbstractLayerDataLightingModel}) = StructTypes.Custom()
+StructTypes.StructType(::Type{AbstractLayerDataLightingModel}) = StructTypes.CustomStruct()
 StructTypes.lowertype(::Type{<:AbstractLayerDataLightingModel}) = Dict{Symbol, Any}()
 StructTypes.lower(lm::AbstractLayerDataLightingModel) = Dict{Symbol, Any}(
     LIGHTING_MODEL_TYPE_KEY => lighting_model_serialized_name(typeof(lm)),
@@ -101,10 +101,10 @@ struct LayerDefinition
     # The constructor must handle 'nothing' values for each field, for StructTypes deserialization.
     LayerDefinition(frag_shader_path, lighting_model, textures, preprocessor_defines) = new(
         isnothing(frag_shader_path) ?
-            error("Field 'frag_shader_path' must be set for a voxel layer!") :
-            frag_shader_path,
+            error("Field 'frag_shader_path' must be provided!") :
+            string(frag_shader_path),
         isnothing(lighting_model) ?
-            error("Field 'lighting_model' must be set for a voxel layer!") :
+            error("Field 'lighting_model' must be provided!") :
             lighting_model,
         isnothing(textures) ?
             Dict{AbstractString, LayerDataTexture}() :

@@ -10,7 +10,7 @@ Base.@kwdef struct VoxelSphere <: AbstractVoxelGenerator
     invert::Bool = false
 end
 
-function generate!(grid::VoxelGrid, s::VoxelSphere, use_threads::Bool)
+function generate!(grid::AbstractVoxelGrid, s::VoxelSphere, use_threads::Bool)
     # Handle inversion.
     local inside_val::VoxelElement,
           outside_val::VoxelElement
@@ -137,7 +137,7 @@ Setfield.ConstructionBase.constructorof(T::Type{<:VoxelBox}) = T
 
 box_mode(::VoxelBox{Val{T}}) where {T} = T
 
-function generate!(grid::VoxelGrid, b::VoxelBox{Val{TMode}}, use_threads::Bool) where {TMode}
+function generate!(grid::AbstractVoxelGrid, b::VoxelBox{Val{TMode}}, use_threads::Bool) where {TMode}
     # Compute the min and max voxels covered by this box.
     grid_size = vsize(grid)
     voxel_scale = convert(v3f, grid_size)

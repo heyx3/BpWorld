@@ -26,7 +26,8 @@ function ViewportTarget(resolution::v2i, depth_only::Bool)
         resolution
     )
     tex_depth = Texture(
-        DepthStencilFormats.depth_16u
+        DepthStencilFormats.depth_16u,
+        resolution
     )
 
     target = Target(

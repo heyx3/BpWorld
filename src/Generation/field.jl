@@ -23,7 +23,7 @@ struct VoxelBinaryField <: AbstractVoxelGenerator
     end
 end
 
-function generate!(voxels::VoxelGrid, field_grid::VoxelBinaryField, use_threads::Bool)
+function generate!(voxels::AbstractVoxelGrid, field_grid::VoxelBinaryField, use_threads::Bool)
     # Generate the field data.
     voxel_grid_size = vsize(voxels)
     process_layer(layer::Pair{VoxelElement, AbstractField{3, 1, Float32}}) = tuple(

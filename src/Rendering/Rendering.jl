@@ -1,6 +1,12 @@
 module Rendering
 
-using ..Utils, ..Voxels
+using Setfield, DataStructures
+using MacroTools, StructTypes, JSON3
+
+using Bplus; @using_bplus
+
+using ..Utils, ..Generation
+using ..BpWorld: VoxelGrid, VoxelElement, EMPTY_VOXEL, AbstractVoxelGrid
 
 
 include("viewport.jl")

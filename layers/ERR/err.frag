@@ -32,7 +32,3 @@ void main() {
 
     #endif
 }
-
-void main() {
-    InData IN = start();
-}

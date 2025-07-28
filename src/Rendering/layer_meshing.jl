@@ -70,7 +70,7 @@ VoxelMesher() = VoxelMesher(
 )
 
 "Calculates the vertices and indices needed to render the given voxel layer in the given grid"
-function calculate_mesh(grid::VoxelGrid, layer::UInt8, mesher::VoxelMesher)
+function calculate_mesh(grid::AbstractVoxelGrid, layer::UInt8, mesher::VoxelMesher)
     grid_size = v3i(size(grid))
 
     # Pre-size the array for the worst-case scenario: every other cube being solid.
@@ -165,7 +165,7 @@ function calculate_mesh(grid::VoxelGrid, layer::UInt8, mesher::VoxelMesher)
     end
 
     # Dispatch a thread for every X, Y, and Z slice.
-    @threads for i in 1:sum(grid_size)
+    Threads.@threads for i in 1:sum(grid_size)
         # Unpack the counter into a slice and its axis.
         (axis, slice) = if i > (grid_size[1] + grid_size[2])
             (UInt8(3), Int32(i - grid_size[1] - grid_size[2]))
@@ -187,7 +187,7 @@ end
 "Manages a separate Task which generates the voxel grid, then meshes each layer"
 mutable struct VoxelMesherTask
     buffers::VoxelMesher
-    grid::VoxelGrid
+    grid::AbstractVoxelGrid
     n_layers::Int
 
     is_finished::Bool
@@ -203,10 +203,10 @@ mutable struct VoxelMesherTask
 end
 
 function VoxelMesherTask(grid_size::Vec3{<:Integer},
-                         grid_generator::Voxels.Generation.AbstractVoxelGenerator,
+                         grid_generator::AbstractVoxelGenerator,
                          n_layers::Int,
                          buffers::VoxelMesher = VoxelMesher())
-    grid::VoxelGrid = fill(zero(VoxelElement), grid_size...)
+    grid::AbstractVoxelGrid = fill(zero(VoxelElement), grid_size...)
 
     channel_to_main = Channel{Int}(2)
     channel_to_worker = Channel{Bool}(2)
@@ -241,7 +241,7 @@ end
 
 "Checks in on the meshing task. If it finished some work, the corresponding lambda is invoked."
 function update_meshing(task::VoxelMesherTask,
-                        take_grid::Base.Callable, # (grid::VoxelGrid) -> nothing
+                        take_grid::Base.Callable, # (grid::AbstractVoxelGrid) -> nothing
                         build_mesh::Base.Callable # (index::Int, temp_data::VoxelMesher) -> nothing
                        )
     if isready(task.channel_to_main)

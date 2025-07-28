@@ -85,7 +85,7 @@ const COMMON_MODEL_FRAG_SHADER_HEADER_DEPTH = """
 
 ##   Lifetime Management   ##
 
-function layer_renderer_init(::Type{LightingModel_Common}, scene::Scene)
+function layer_renderer_init(::LightingModel_Common, scene::Scene)
     return LayerRenderer_Common()
 end
 
@@ -114,7 +114,7 @@ function layer_renderer_init_layer(r::LayerRenderer_Common,
 
     # Load the custom fragment shader.
     fragment_shader_body = read(joinpath(VOXEL_LAYERS_PATH,
-                                         data.frag_shader_path),
+                                         l.frag_shader_path),
                                 String)
 
     # Load/generate shader source.
@@ -170,7 +170,7 @@ layer_renderer_reads_target(::LayerRenderer_Common, ::PassInfo) = false
 function layer_renderer_execute(renderer::LayerRenderer_Common,
                                 viewport::Viewport,
                                 viewport_assets::LayerRendererViewport_Common,
-                                layers::Vector{<:Tuple{Int, LayerDefinition, Optional{LayerMesh}, AbstractLayerRendererLayer}},
+                                layers::Vector{LayerRenderExecution{LayerRendererLayer_Common}},
                                 scene::Scene,
                                 pass_info::PassInfo)
     mat_viewproj = m_combine(cam_view_mat(viewport.cam),
@@ -192,22 +192,22 @@ function layer_renderer_execute(renderer::LayerRenderer_Common,
         end
     end
 
-    for (layer_idx::Int, layer_def, layer_mesh, layer_assets::LayerRendererLayer_Common) in layers
+    for layer_to_execute in layers
         # Decide which shader to use for this pass and layer.
-        has_mesh::Bool = exists(layer_mesh)
+        has_mesh::Bool = exists(layer_to_execute.finished_mesh)
         depth_only = (pass_info.type in (Pass.depth, Pass.shadow_map))
         prog::Program =
             if has_mesh
                 if depth_only
-                    layer_assets.depth_meshed
+                    layer_to_execute.custom_data.depth_meshed
                 else
-                    layer_assets.forward_meshed
+                    layer_to_execute.custom_data.forward_meshed
                 end
             else
                 if depth_only
-                    layer_assets.depth_preview
+                    layer_to_execute.custom_data.depth_preview
                 else
-                    layer_assets.forward_preview
+                    layer_to_execute.custom_data.forward_preview
                 end
             end
 
@@ -216,17 +216,17 @@ function layer_renderer_execute(renderer::LayerRenderer_Common,
                                zero(v3f), v3f(10, 10, 10),
                                pass_info.elapsed_seconds,
                                mat_viewproj)
-        if isnothing(layer_mesh)
+        if isnothing(layer_to_execute.finished_mesh)
             set_preview_uniforms(prog,
                                  convert(v3u, vsize(scene.voxels_array)),
-                                 layer_idx,
+                                 layer_to_execute.idx,
                                  scene.voxels)
             # Note that texture activation (and later deactivation) isn't handled by us,
             #    but by the scene.
         end
 
         # Set texture uniforms.
-        for (tex_file, tex_data) in layer_def.textures
+        for (tex_file, tex_data) in layer_to_execute.def.textures
             uniform_name = tex_data.code_name
 
             tex = get_cached_data!(scene.cache_textures, tex_file)
@@ -239,7 +239,7 @@ function layer_renderer_execute(renderer::LayerRenderer_Common,
 
         # Draw.
         if has_mesh
-            render_mesh(layer_mesh, prog)
+            render_mesh(layer_to_execute.finished_mesh, prog)
         else
             render_mesh(
                 service_BasicGraphics().empty_mesh, prog

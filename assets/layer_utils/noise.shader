@@ -116,7 +116,7 @@ float valueNoise(float x, float seed)
     float t = x - xMin;
     //t = SMOOTHERSTEP(t); //Actually gives worse results due to
                         //  the dumb simplicity of the underlying noise
-    
+
     return mix(noiseMin, noiseMax, t);
 }
 float valueNoise(vec2 x, float seed)
@@ -128,7 +128,7 @@ float valueNoise(vec2 x, float seed)
     vec2 t = x - xMin;
     //t = SMOOTHERSTEP(t); //Actually gives worse results due to
                         //  the dumb simplicity of the underlying noise
-    
+
     #define VALUE_NOISE_2D(pos) hashTo1(vec3(pos, seed) * 450.0)
     return mix(mix(VALUE_NOISE_2D(xMinMax.xy),
                 VALUE_NOISE_2D(xMinMax.zy),
@@ -141,25 +141,25 @@ float valueNoise(vec2 x, float seed)
 
 //Octave noise behaves the same regardless of dimension.
 #define IMPL_OCTAVE_NOISE(x, outputVar, persistence, seed, nOctaves, noiseFunc, noiseMidArg, octaveValueMod) \
-    float outputVar; { \
-    float sum = 0.0,                                                 \
-          scale = 1.0,                                               \
-          nextWeight = 1.0,                                          \
-          totalWeight = 0.0;                                         \
-    for (int i = 0; i < nOctaves; ++i)                               \
-    {                                                                \
-        float octaveValue = noiseFunc((x) * scale,                   \
-                                      noiseMidArg                    \
-                                      (seed) + float(i));            \
-        octaveValueMod;                                              \
-        sum += octaveValue * nextWeight;                             \
-        totalWeight += nextWeight;                                   \
-                                                                     \
-        nextWeight /= (persistence);                                 \
-        scale *= (persistence);                                      \
-    }                                                                \
-    outputVar = sum / totalWeight;                                   \
-}
+    float outputVar; {                                                   \
+        float sum = 0.0,                                                 \
+            scale = 1.0,                                                 \
+            nextWeight = 1.0,                                            \
+            totalWeight = 0.0;                                           \
+        for (int i = 0; i < nOctaves; ++i)                               \
+        {                                                                \
+            float octaveValue = noiseFunc((x) * scale,                   \
+                                        noiseMidArg                      \
+                                        (seed) + float(i));              \
+            octaveValueMod;                                              \
+            sum += octaveValue * nextWeight;                             \
+            totalWeight += nextWeight;                                   \
+                                                                         \
+            nextWeight /= (persistence);                                 \
+            scale *= (persistence);                                      \
+        }                                                                \
+        outputVar = sum / totalWeight;                                   \
+    }
 float octaveNoise(float x, float seed, int nOctaves, float persistence) { IMPL_OCTAVE_NOISE(x, outNoise, persistence, seed, nOctaves, valueNoise, ,); return outNoise; }
 float octaveNoise(vec2 x, float seed, int nOctaves, float persistence) { IMPL_OCTAVE_NOISE(x, outNoise, persistence, seed, nOctaves, valueNoise, ,); return outNoise; }
 

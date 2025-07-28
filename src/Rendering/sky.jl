@@ -47,8 +47,8 @@ const SKY_SHADER_FRAG = """
     }
 """
 
-Sky() = new(
-    Program(SKY_SHADER_VERT, SKY_SHADER_FRAG),
+Sky() = Sky(
+    compile_shaders(SKY_SHADER_VERT, SKY_SHADER_FRAG),
     @f32(10)
 )
 

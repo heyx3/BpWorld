@@ -2,7 +2,7 @@ module BpWorld
 
 using Setfield, Base.Threads, StructTypes, JSON3
 
-using GLFW, ModernGLbp, CImGui,
+using GLFW, CImGui,
       ImageIO, FileIO, ColorTypes, FixedPointNumbers, ImageTransformations,
       CSyntax
 
@@ -12,10 +12,16 @@ using PNGFiles, ImageMagick
 
 using Bplus
 @using_bplus
+const ModernGLbp = Bplus.GL.ModernGLbp
 
 
 include("Utils/Utils.jl")
 using .Utils
+
+const VoxelElement = UInt8
+const EMPTY_VOXEL = zero(VoxelElement)
+const AbstractVoxelGrid = AbstractArray{VoxelElement, 3}
+const VoxelGrid = Array{VoxelElement, 3}
 
 include("Generation/Generation.jl")
 using .Generation

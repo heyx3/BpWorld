@@ -6,7 +6,7 @@ struct VoxelUnion <: AbstractVoxelGenerator
     inputs::Vector{AbstractVoxelGenerator}
 end
 
-function generate!(grid::VoxelGrid, u::VoxelUnion, use_threads::Bool)
+function generate!(grid::AbstractVoxelGrid, u::VoxelUnion, use_threads::Bool)
     # Calculate each input's voxel grid.
     #TODO: Keep it on one giant 4D grid to streamline memory usage and simplify syntax with @view.
     input_grids = map(i -> generate(vsize(grid), i, use_threads),
@@ -61,7 +61,7 @@ struct VoxelDifference <: AbstractVoxelGenerator
                           #    (if subtractors output them, it's considered empty space).
 end
 
-function generate!(grid::VoxelGrid, d::VoxelDifference, use_threads::Bool)
+function generate!(grid::AbstractVoxelGrid, d::VoxelDifference, use_threads::Bool)
     # Calculate each input's voxel grid.
     main_grid = generate(vsize(grid), d.main, use_threads)
     subtractor_grids = map(i -> generate(vsize(grid), i, use_threads),
@@ -161,7 +161,7 @@ end
 VoxelIntersection(first_input::AbstractVoxelGenerator, rest_inputs::AbstractVoxelGenerator...) =
     VoxelIntersection([ first_input, rest_inputs... ])
 
-function generate!(grid::VoxelGrid, i::VoxelIntersection, use_threads::Bool)
+function generate!(grid::AbstractVoxelGrid, i::VoxelIntersection, use_threads::Bool)
     # Calculate each input's voxel grid.
     # Keep it on one giant 4D grid to streamline memory usage.
     full_input_grid = Array{VoxelElement, 4}(undef, (size(grid)..., length(i.inputs)))

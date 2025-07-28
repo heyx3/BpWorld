@@ -2,12 +2,13 @@ module Utils
 
 using Setfield, Base.Threads,
       Suppressor, StructTypes, JSON3, CSyntax
-using GLFW, ModernGLbp, CImGui,
+using GLFW, CImGui,
       ImageIO, FileIO, ColorTypes, FixedPointNumbers, ImageTransformations,
       MacroTools
 using Bplus,
       Bplus.Utilities, Bplus.Math, Bplus.GL,
-      Bplus.Helpers, Bplus.SceneTree, Bplus.Input
+      Bplus.BplusTools, Bplus.SceneTree, Bplus.Input
+const ModernGLbp = Bplus.GL.ModernGLbp
 #
 
 # Allows the creation of multiple callbacks to run on program start, via the global list 'RUN_ON_INIT'
@@ -30,6 +31,7 @@ export @bpworld_assert, @bpworld_debug,
        ROOT_PATH,
        VOXEL_LAYERS_PATH, ASSETS_PATH, SCENES_PATH,
        SCENES_EXTENSION,
-       process_shader_contents, pixel_converter, load_tex
+       process_shader_contents, compile_shaders, compile_shader_files,
+       pixel_converter, load_tex
 
 end # module

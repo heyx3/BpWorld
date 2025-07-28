@@ -1,35 +1,5 @@
 bpw_asset_path(relative::AbstractString) = joinpath(ASSETS_PATH, relative)
 
-#################
-##   Shaders   ##
-#################
-
-"
-Compiles a shader for this project, handling `#include`s (crudely; relative to 'assets' folder)
-    and applying `SHADER_CUTOFF_TOKEN`.
-"
-function compile_shaders( vert::AbstractString, frag::AbstractString
-                          ;
-                          insert_above_code::AbstractString = "",
-                          program_kw...
-                        )
-    return Program(
-        process_shader_contents(vert, insert_above_code),
-        process_shader_contents(frag, insert_above_code),
-        ; program_kw...
-    )
-end
-"An alternative to `compile_shaders()` that takes file paths instead of shader text"
-compile_shader_files(vert::AbstractString, frag::AbstractString; kw...) = compile_shaders(
-    String(open(read, joinpath(ASSETS_PATH, vert))),
-    String(open(read, joinpath(ASSETS_PATH, frag)))
-    ; kw...
-)
-compile_shader_files(name_without_ext::AbstractString; kw...) = compile_shader_files(
-    "$name_without_ext.vert",
-    "$name_without_ext.frag"
-    ; kw...
-)
 
 ################
 ##   Assets   ##

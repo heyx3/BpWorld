@@ -30,7 +30,7 @@ function Shadowmap(resolution::Union{Integer, Vec2{<:Integer}},
     )
     target = Target(TargetOutput(tex=tex))
 
-    return Shadowmap(m4_identityf(), m4_identityf(), tex, target)
+    return Shadowmap(m_identityf(4, 4), m_identityf(4, 4), tex, target)
 end
 
 "Recalculates the light's projection matrix and clears its shadow-map"

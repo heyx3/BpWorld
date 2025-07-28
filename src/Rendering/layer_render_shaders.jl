@@ -5,6 +5,9 @@ Note: non-meshed versions of shaders are referred to as "preview" shaders.
 """
 module LayerShaders
 
+using Bplus; @using_bplus
+using ..Rendering
+
 export SHADER_PREVIEW_VERT, SHADER_PREVIEW_GEOM,
        SHADER_MESHED_VERT,
        SHADER_FRAG_HEADER,
@@ -112,11 +115,16 @@ const FRAG_SHADER_INPUT_PACKING = """
         vec4 ndcPos = $UNIFORM_MATRIX_VIEWPROJ * vec4(worldPos, 1);
 
         // Calculate grid-space UV's based on which axis this face is perpendicular to.
-        uvec2 uvIndices[3] = { ivec2(1, 2), ivec2(0, 2), ivec2(0, 1) };
-        uvec2 uvIdx = uv_indices[axis];
+        uvec2 uvIndices[3] = { uvec2(1, 2), uvec2(0, 2), uvec2(0, 1) };
+        uvec2 uvIdx = uvIndices[axis];
         vec2 uv = vec2(gridPos[uvIdx.x], gridPos[uvIdx.y]);
 
-        return ProcessedVert(gridPos, worldPos, ndcPos, uv);
+        ProcessedVert v;
+        v.voxelPos = gridPos;
+        v.worldPos = worldPos;
+        v.ndcPos = ndcPos;
+        v.uv = uv;
+        return v;
     }
     void calcCustomOutputs(ProceessedVert vertex)
     {
@@ -427,7 +435,6 @@ const SHADER_FRAG_HEADER = """
     #line 5000
     $FORWARD_FX_SHADER_CODE
     #line 6000
-    uniform float $UNIFORM_ELAPSED_SECONDS;
     $FRAG_SHADER_OUTPUTS
     #line 7000
 """
@@ -435,3 +442,5 @@ const SHADER_FRAG_HEADER = """
 ###############################
 
 end # module
+
+using .LayerShaders

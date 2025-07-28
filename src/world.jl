@@ -74,8 +74,8 @@ end
 #############
 
 mutable struct World
-    renderer::Renderer.Scene
-    main_viewport::Renderer.Viewport
+    renderer::Rendering.Scene
+    main_viewport::Rendering.Viewport
 
     sun::SunData
     sun_gui::SunDataGui
@@ -86,6 +86,7 @@ mutable struct World
 
     is_mouse_captured::Bool
     total_seconds::Float32
+    last_render_timestamp::Float32
 end
 function Base.close(s::World)
     # Try to close() everything that isnt specifically blacklisted.
@@ -121,9 +122,11 @@ function World(window::GLFW.Window, assets::Assets)
     main_camera = Cam3D{Float32}(
         pos=v3f(30, -30, 670),
         forward=vnorm(v3f(1, 1, -0.2)),
-        clip_range=IntervalF(min=0.05, max=1000),
-        fov_degrees=@f32(100),
-        aspect_width_over_height=@f32(window_size.x / window_size.y)
+        projection = PerspectiveProjection{Float32}(
+            clip_range=IntervalF(min=0.05, max=1000),
+            vertical_fov_degrees=@f32(100),
+            aspect_width_over_height=@f32(window_size.x / window_size.y)
+        )
     )
     main_camera_settings = Cam3D_Settings{Float32}(
         move_speed=@f32(50),
@@ -154,7 +157,7 @@ function World(window::GLFW.Window, assets::Assets)
         gui_fog, init_gui_state(gui_fog),
         gui_scene, init_gui_state(gui_scene),
 
-        false, @f32(0.0)
+        false, @f32(0.0), @f32(0.0)
     )
 end
 
@@ -220,7 +223,7 @@ Processes a new scene file in the background, eventually replacing the current s
 If the scene file is invalid, returns an error message.
 Otherwise, returns `nothing` to indicate that it was accepted.
 "
-function start_new_scene(renderer::Renderer.Scene, new_contents::AbstractString,
+function start_new_scene(renderer::Rendering.Scene, new_contents::AbstractString,
                          voxel_resolution::v3i
                         )::Optional{AbstractString}
     # As soon as something fails, roll back the changes and exit.
@@ -232,12 +235,16 @@ function start_new_scene(renderer::Renderer.Scene, new_contents::AbstractString,
     catch e
         return "Layer error: $(sprint(showerror, e))"
     end
-    ordered_layers = sort!(collect(layers_by_id), by=kvp->kvp[1])
-    layer_list::Vector = map(1:maximum(keys(ordered_layers))) do i::Int
-        get(ordered_layers, i, Rendering.ERROR_LAYER_FILE)
+    ordered_layers = sort!(collect(new_layers), by=kvp->kvp[1])
+
+    # Arrange the layers into an array.
+    # For missing/unused voxel values, reference the Error renderer.
+    max_layer_idx = maximum(keys(new_layers))
+    layer_list::Vector{<:AbstractString} = map(1:max_layer_idx) do layer_value
+        return get(new_layers, layer_value, Rendering.ERROR_LAYER_FILE)
     end
 
-    # Parse voxel generator.
+    # Parse the voxel generator.
     local scene_expr
     try
         scene_expr = Meta.parseall(new_contents)
@@ -246,43 +253,36 @@ function start_new_scene(renderer::Renderer.Scene, new_contents::AbstractString,
     end
 
     # Evaluate the voxel generator expression.
-    scene_generator = Voxels.Generation.eval_dsl(scene_expr)
-    if scene_generator isa Voxels.Generation.DslError
+    scene_generator = Generation.eval_dsl(scene_expr)
+    if scene_generator isa Generation.DslError
         return string(scene_generator.msg_data...)
-    elseif !isa(scene_generator, Voxels.Generation.AbstractVoxelGenerator)
+    elseif !isa(scene_generator, Generation.AbstractVoxelGenerator)
         return "Output of the scene is not a voxel generator! It's a $(typeof(scene_generator))"
     end
 
     # Everything loaded and parsed correctly, so kick off the scene generation.
-    reset_scene(renderer, voxel_generator, layer_list, voxel_resolution)
+    reset_scene(renderer, scene_generator, layer_list, voxel_resolution)
 
     return nothing
 end
 
-TODO: Start converting from here
-
-
-"Renders a depth-only pass using the given view/projection matrices."
-function render_depth_only(world::World, assets::Assets, mat_viewproj::fmat4)
-    set_color_writes(Vec(false, false, false, false))
-    set_depth_writes(true)
-    set_depth_test(ValueTests.less_than)
-    Voxels.render_depth_only(world.voxels, mat_viewproj, world.voxel_materials)
-    set_color_writes(Vec(true, true, true, true))
-end
 
 "Renders the world."
 function render(world::World, assets::Assets)
-    context::Context = get_context()
-
-    Rendering.render_viewport(
+    begin_scene_frame(
+        world.renderer,
+        world.total_seconds - world.last_render_timestamp,
+        world.total_seconds,
+        (dir=world.sun.dir, color=world.sun.color, shadow_bias=@f32(0.0)),
+        world.fog
+    )
+    render_viewport(
         world.renderer, world.main_viewport,
         world.total_seconds,
         RenderSettings(
             render_sky = true
         )
     )
-
     end_scene_frame(world.renderer)
 
     # Copy the render to the screen with an adjusted gamma.

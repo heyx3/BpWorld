@@ -4,7 +4,7 @@ using Bplus
 using Bplus.Utilities, Bplus.Math
 
 using BpWorld
-using BpWorld.Utils, BpWorld.Voxels, BpWorld.Voxels.Generation, BpWorld.Rendering
+using BpWorld.Utils, BpWorld.Voxels, BpWorld.Generation, BpWorld.Rendering
 
 
 # Implement equality for voxel generators, for testing purposes.
@@ -194,22 +194,22 @@ end
             @test g.layer === 0x00
             @test g.area === Box((min=v3f(4, 5, 6), max=v3f(7, 8, 9)))
             @test !g.invert
-            @test BpWorld.Voxels.Generation.box_mode(g) ==
-                      BpWorld.Voxels.Generation.BoxModes.filled
+            @test BpWorld.Generation.box_mode(g) ==
+                      BpWorld.Generation.BoxModes.filled
         end
         test_generator(:( Box(layer=0xAB, min={4.5, 3.7, 20}, size={99, 98, 97}) ), "Min/size box") do g
             @test g.layer === 0xAB
             @test g.area === Box((min=v3f(4.5, 3.7, 20), size=v3f(99, 98, 97)))
             @test !g.invert
-            @test BpWorld.Voxels.Generation.box_mode(g) ==
-                      BpWorld.Voxels.Generation.BoxModes.filled
+            @test BpWorld.Generation.box_mode(g) ==
+                      BpWorld.Generation.BoxModes.filled
         end
         test_generator(:( Box(layer=0x43, max={4.5, 3.7, 20}, size={99, 98, 97}, invert=(true|false), mode=edges) ), "Inverted max/size box") do g
             @test g.layer === 0x43
             @test g.area === Box((max=v3f(4.5, 3.7, 20), size=v3f(99, 98, 97)))
             @test g.invert
-            @test BpWorld.Voxels.Generation.box_mode(g) ==
-                      BpWorld.Voxels.Generation.BoxModes.edges
+            @test BpWorld.Generation.box_mode(g) ==
+                      BpWorld.Generation.BoxModes.edges
         end
         test_generator(:( Union(
                             Box(layer=0x02, min={4, 5, 6}, max={5, 7, 9}),
@@ -221,8 +221,8 @@ end
             @test g.inputs[1].layer == 0x02
             @test g.inputs[1].area == Box((min=v3f(4, 5, 6), max=v3f(5, 7, 9)))
             @test !g.inputs[1].invert
-            @test BpWorld.Voxels.Generation.box_mode(g.inputs[1]) ==
-                      BpWorld.Voxels.Generation.BoxModes.filled
+            @test BpWorld.Generation.box_mode(g.inputs[1]) ==
+                      BpWorld.Generation.BoxModes.filled
             @test g.inputs[2] isa VoxelSphere
             @test g.inputs[2].layer == 0x56
             @test g.inputs[2].center == v3f(1, 2, 3)
@@ -239,8 +239,8 @@ end
             @test g.inputs[1].layer == 0x02
             @test g.inputs[1].area == Box((max=v3f(5, 7, 9), size=v3f(4, 5, 6)))
             @test !g.inputs[1].invert
-            @test BpWorld.Voxels.Generation.box_mode(g.inputs[1]) ==
-                      BpWorld.Voxels.Generation.BoxModes.filled
+            @test BpWorld.Generation.box_mode(g.inputs[1]) ==
+                      BpWorld.Generation.BoxModes.filled
             @test g.inputs[2] isa VoxelSphere
             @test g.inputs[2].layer == 0x56
             @test g.inputs[2].center == v3f(1, 2, 3)
@@ -256,8 +256,8 @@ end
             @test g.main.layer == 0x02
             @test g.main.area == Box((min=v3f(4, 5, 6), max=v3f(5, 7, 9)))
             @test !g.main.invert
-            @test BpWorld.Voxels.Generation.box_mode(g.main) ==
-                      BpWorld.Voxels.Generation.BoxModes.filled
+            @test BpWorld.Generation.box_mode(g.main) ==
+                      BpWorld.Generation.BoxModes.filled
             @test length(g.subtractors) == 1
             @test g.subtractors[1] isa VoxelSphere
             @test g.subtractors[1].layer == 0x56
@@ -274,8 +274,8 @@ end
             @test g.main.layer == 0x02
             @test g.main.area == Box((min=v3f(4, 5, 6), max=v3f(5, 7, 9)))
             @test !g.main.invert
-            @test BpWorld.Voxels.Generation.box_mode(g.main) ==
-                      BpWorld.Voxels.Generation.BoxModes.filled
+            @test BpWorld.Generation.box_mode(g.main) ==
+                      BpWorld.Generation.BoxModes.filled
             @test length(g.subtractors) == 1
             @test g.subtractors[1] isa VoxelSphere
             @test g.subtractors[1].layer == 0x56
