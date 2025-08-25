@@ -42,33 +42,6 @@ input_quit_confirm() = get_button("quit_confirm")
 input_reload_shaders() = get_button("reload_shaders")
 
 
-####################
-#   Layer parsing  #
-####################
-
-"
-Grabs the `#layer N path/to/layer.json` statements from the given scene file.
-Returns the scene file with those statements stripped (leaving only the DSL),
-    and the contents of those statements.
-"
-function grab_layers(contents::AbstractString
-                    )::Tuple{typeof(contents),
-                             Dict{VoxelElement, typeof(contents)}}
-    layers = Dict{VoxelElement, AbstractString}()
-    rgx = r"(?m)^#layer\s+([0-9]+)\s+(.+)$"
-    for match in eachmatch(rgx, contents)
-        (layer_idx, layer_relative_path) = match.captures
-        layer_idx = parse(VoxelElement, layer_idx)
-        @bp_check(!haskey(layers, layer_idx),
-                  "Layer ", layer_idx, " is named more than once: ",
-                    "\"", layer_relative_path, "\" and then \"",
-                    layers[layer_idx], "\"")
-        layers[layer_idx] = layer_relative_path
-    end
-    return (replace(contents, rgx=>""), layers)
-end
-
-
 #############
 #   World   #
 #############
@@ -77,6 +50,7 @@ mutable struct World
     renderer::Rendering.Scene
     main_viewport::Rendering.Viewport
 
+    #TODO: Add a suffix like "_ubo" to the UBO structs!!
     sun::SunData
     sun_gui::SunDataGui
     fog::FogData
@@ -84,28 +58,15 @@ mutable struct World
     scene::SceneData
     scene_gui::SceneDataGui
 
+    ubo_fog::UniformBlock_Fog
+
     is_mouse_captured::Bool
     total_seconds::Float32
     last_render_timestamp::Float32
 end
-function Base.close(s::World)
-    # Try to close() everything that isnt specifically blacklisted.
-    # This is the safest option to avoid leaks.
-    blacklist = tuple(:total_seconds, :is_mouse_captured,
-                      :sun, :sun_gui, :fog, :fog_gui, :scene, :scene_gui)
-    whitelist = setdiff(fieldnames(typeof(s)), blacklist)
-    for field in whitelist
-        v = getfield(s, field)
-        if v isa AbstractVector
-            for el in v
-                close(el)
-            end
-            empty!(v)
-        elseif exists(v) # Some fields are Optional
-            close(v)
-        end
-    end
-end
+Base.close(w::World) = close.([
+    w.renderer
+])
 
 function World(window::GLFW.Window, assets::Assets)
     window_size::v2i = get_window_size(window)
@@ -157,6 +118,10 @@ function World(window::GLFW.Window, assets::Assets)
         gui_fog, init_gui_state(gui_fog),
         gui_scene, init_gui_state(gui_scene),
 
+        UniformBlock_Fog(gui_fog.density, gui_fog.dropoff,
+                         gui_fog.height_offset, gui_fog.height_scale,
+                         vappend(gui_fog.color, 1.0f0)),
+
         false, @f32(0.0), @f32(0.0)
     )
 end
@@ -203,78 +168,21 @@ function update(world::World, delta_seconds::Float32, window::GLFW.Window)
     )
 
     # Update the renderer.
-    begin_scene_frame(
-        world.renderer, delta_seconds, world.total_seconds,
-        (
-            dir = world.sun.dir,
-            color = world.sun.color,
-            shadow_bias = @f32(10)
-        ),
-        UniformBlock_Fog(
-            world.fog.density, world.fog.dropoff,
-            world.fog.height_offset, world.fog.height_scale,
-            vappend(world.fog.color, 1);
-        )
-    )
+    world.ubo_fog.density = world.fog.density
+    world.ubo_fog.dropoff = world.fog.dropoff
+    world.ubo_fog.height_offset = world.fog.height_offset
+    world.ubo_fog.height_scale = world.fog.height_scale
+    world.ubo_fog.color = vappend(world.fog.color, 1.0f0)
 end
 
-"
-Processes a new scene file in the background, eventually replacing the current scene with it.
-If the scene file is invalid, returns an error message.
-Otherwise, returns `nothing` to indicate that it was accepted.
-"
-function start_new_scene(renderer::Rendering.Scene, new_contents::AbstractString,
-                         voxel_resolution::v3i
-                        )::Optional{AbstractString}
-    # As soon as something fails, roll back the changes and exit.
-
-    # Parse voxel layers.
-    local new_layers::Dict{VoxelElement, AbstractString}
-    try
-        (new_contents, new_layers) = grab_layers(new_contents)
-    catch e
-        return "Layer error: $(sprint(showerror, e))"
-    end
-    ordered_layers = sort!(collect(new_layers), by=kvp->kvp[1])
-
-    # Arrange the layers into an array.
-    # For missing/unused voxel values, reference the Error renderer.
-    max_layer_idx = maximum(keys(new_layers))
-    layer_list::Vector{<:AbstractString} = map(1:max_layer_idx) do layer_value
-        return get(new_layers, layer_value, Rendering.ERROR_LAYER_FILE)
-    end
-
-    # Parse the voxel generator.
-    local scene_expr
-    try
-        scene_expr = Meta.parseall(new_contents)
-    catch e
-        return "Scene has invalid syntax $(sprint(showerror, e))"
-    end
-
-    # Evaluate the voxel generator expression.
-    scene_generator = Generation.eval_dsl(scene_expr)
-    if scene_generator isa Generation.DslError
-        return string(scene_generator.msg_data...)
-    elseif !isa(scene_generator, Generation.AbstractVoxelGenerator)
-        return "Output of the scene is not a voxel generator! It's a $(typeof(scene_generator))"
-    end
-
-    # Everything loaded and parsed correctly, so kick off the scene generation.
-    reset_scene(renderer, scene_generator, layer_list, voxel_resolution)
-
-    return nothing
-end
-
-
-"Renders the world."
-function render(world::World, assets::Assets)
+"Renders the world, usually to the screen."
+function render(world::World, assets::Assets, display_to_screen::Bool)
     begin_scene_frame(
         world.renderer,
         world.total_seconds - world.last_render_timestamp,
         world.total_seconds,
         (dir=world.sun.dir, color=world.sun.color, shadow_bias=@f32(0.0)),
-        world.fog
+        world.ubo_fog
     )
     render_viewport(
         world.renderer, world.main_viewport,
@@ -285,13 +193,10 @@ function render(world::World, assets::Assets)
     )
     end_scene_frame(world.renderer)
 
-    # Copy the render to the screen with an adjusted gamma.
-    target_activate(nothing)
-    simple_blit(
-        world.main_viewport.target_current.color
-        ;
-        output_curve=@f32(1 / 2.2)
-    )
+    if display_to_screen
+        target_activate(nothing)
+        simple_blit(world.main_viewport.target_current.color)
+    end
 end
 
 function on_window_resized(world::World, window::GLFW.Window, new_size::v2i)
@@ -300,8 +205,8 @@ function on_window_resized(world::World, window::GLFW.Window, new_size::v2i)
         world.main_viewport = add_viewport(
             world.renderer,
             let c = world.main_viewport.cam
-                @set! c.aspect_width_over_height = @f32(new_size.x) / @f32(new_size.y)
-                c
+              @set! c.projection.aspect_width_over_height = @f32(new_size.x) / @f32(new_size.y)
+              c
             end,
             world.main_viewport.cam_settings
             ;

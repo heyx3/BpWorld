@@ -10,7 +10,7 @@ struct VoxelLayerVertex
     # The vertex position is given as a voxel index; it will sit at that voxel's min corner.
     # For simplicity, the voxel grid starts at 0 and so the positions are unsigned.
 
-    # The top bit of each voxel position is used to store
+    # The most-significant bit of each coordinate is used to store
     #    which axis and direction the vertex's face is facing.
     # The XY bits indicate axis (from 0 - 2).
     # The Z bit indicates direction (0 means -1, 1 means +1).
@@ -51,6 +51,24 @@ end
 voxel_vertex_layout(buffer_idx::Int = 1) = [
     VertexAttribute(buffer_idx, 0, VSInput(v3u))
 ]
+
+const SHADER_VERTEX_LAYOUT = """
+    in uvec3 vIn_packedInput;
+    struct UnpackedVertexInput {
+        uvec3 voxelIdx;
+        uint faceAxis;
+        int faceDir;
+    };
+    //NOTE: 'output' and 'packed' are both keywords that screw up compilation in confusing ways lmao
+    UnpackedVertexInput unpackInput(uvec3 pcked) {
+        UnpackedVertexInput upi;
+        upi.voxelIdx = pcked & 0x7fFFffFF;
+        upi.faceAxis = (pcked.x >> 31) | ((pcked.y >> 31) << 1);
+        upi.faceDir = (int(pcked.z >> 31) * 2) - 1;
+        return upi;
+    }
+"""
+
 
 
 ################################
@@ -119,7 +137,7 @@ function calculate_mesh(grid::AbstractVoxelGrid, layer::UInt8, mesher::VoxelMesh
             is_neighbor_free::Bool = is_on_edge || (@inbounds(grid[neighbor_voxel_idx]) == EMPTY_VOXEL)
 
             # If the neighbor voxel is empty (or transparent), this is a visible face.
-            println("#TODO: Also ignore transparent neighbors")
+            # println("#TODO: Also ignore transparent neighbors")
             if is_neighbor_free
                 a = voxel_idx - 1 # Make it 0-based to start at the origin
                 @inbounds(@set! a[axis] += ((dir + 1) ÷ 2))
@@ -251,7 +269,7 @@ function update_meshing(task::VoxelMesherTask,
             take_grid(task.grid)
         # Otherwise, it finished meshing a layer.
         else
-            @bpworld_assert(task.is_finished)
+            @bpworld_assert(!task.is_finished)
             @bpworld_assert(finished_idx <= task.n_layers)
 
             put!(task.channel_to_worker, true)

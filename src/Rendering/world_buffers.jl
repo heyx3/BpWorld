@@ -29,12 +29,22 @@ const UBO_IDX_FOG = 1 # Shaders expect this to be set to 1
     mat_inv_view_proj::fmat4
 end
 UniformBlock_Viewport(cam::Cam3D{Float32}) = UniformBlock_Viewport(
-    cam.pos,
+    vappend(cam.pos, 1),
     let basis = cam_basis(cam)
-      (basis.forward, basis.up, basis.right)
+      map(v -> vappend(v, 0), (basis.forward, basis.up, basis.right))
     end...,
-    min_inclusive(cam.clip_range),
-    max_exclusive(cam.clip_range),
+    # Clip min/max:
+    (if cam.projection isa PerspectiveProjection{Float32}
+        tuple(
+            min_inclusive(cam.projection.clip_range),
+            max_exclusive(cam.projection.clip_range)
+        )
+    else
+        tuple(
+            min_inclusive(cam.projection).z,
+            max_inclusive(cam.projection).z
+        )
+    end)...,
     let m_view = cam_view_mat(cam),
         m_proj = cam_projection_mat(cam),
         m_view_proj = m_combine(m_view, m_proj)

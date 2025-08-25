@@ -1,44 +1,6 @@
-"A shadowmap for a directional light"
-mutable struct Shadowmap
-    mat_view_proj::fmat4
-    mat_world_to_texel::fmat4 # ViewProj followed by a transform from NDC to UV
-
-    depth_texture::Texture
-    render_target::Target
-end
-@close_gl_resources(s::Shadowmap)
-
-function Shadowmap(resolution::Union{Integer, Vec2{<:Integer}},
-                   format::E_DepthStencilFormats = DepthStencilFormats.depth_32u)
-    resolution = if resolution isa Integer
-        v2u(resolution, resolution)
-    elseif resolution isa Vec2
-        convert(v2u, resolution)
-    else
-        error(typeof(resolution))
-    end
-
-    tex = Texture(
-        format,
-        resolution,
-        sampler = TexSampler{2}(
-            wrapping = WrapModes.clamp,
-            pixel_filter = PixelFilters.smooth,
-            mip_filter = PixelFilters.smooth,
-            depth_comparison_mode = ValueTests.less_than_or_equal
-        )
-    )
-    target = Target(TargetOutput(tex=tex))
-
-    return Shadowmap(m_identityf(4, 4), m_identityf(4, 4), tex, target)
-end
-
-"Recalculates the light's projection matrix and clears its shadow-map"
-function prepare(shadowmap::Shadowmap,
-                 light_dir::v3f,
-                 scene_bounds::Box3Df)
-    target_clear(shadowmap.target, @f32(1))
-
+function get_shadowmap_transform(light_dir::v3f,
+                                 scene_bounds::Box3Df
+                                )::@NamedTuple{cam::Cam3D{Float32}, view_proj::fmat4, world_to_texel::fmat4}
     # Calculate an orthogonal view-projection matrix.
     # Reference: https://www.gamedev.net/forums/topic/505893-orthographic-projection-for-shadow-mapping/
 
@@ -47,7 +9,7 @@ function prepare(shadowmap::Shadowmap,
     light_world_pos = center(scene_bounds)
     light_world_pos -= light_dir * vlength(size(scene_bounds))
     mat_light_view::fmat4 = m4_look_at(light_world_pos, light_world_pos + light_dir,
-                                     get_up_vector())
+                                       get_up_vector())
 
     # Get the 8 corners of the scene, in the light's view-space.
     scene_corners_world = corners(scene_bounds)
@@ -60,17 +22,23 @@ function prepare(shadowmap::Shadowmap,
         light_view_min = min(light_view_min, point)
         light_view_max = max(light_view_max, point)
     end
-    mat_light_proj::fmat4 = m4_ortho(Box(min=light_view_min, max=light_view_max))
+    ortho_box = Box(min=light_view_min, max=light_view_max)
+    mat_light_proj::fmat4 = m4_ortho(ortho_box)
 
     # Generate the final matrices.
-    shadowmap.mat_view_proj = m_combine(mat_light_view, mat_light_proj)
-    shadowmap.mat_world_to_texel = m_combine(
-        shadowmap.mat_view_proj,
+    mat_view_proj = m_combine(mat_light_view, mat_light_proj)
+    mat_world_to_texel = m_combine(
+        mat_view_proj,
         m_scale(v4f(0.5, 0.5, 0.5, 1.0)),
         m4_translate(v3f(0.5, 0.5, 0.5))
     )
-end
-"Finalizes data after the shadow-map is rendered"
-function finish(shadowmap::Shadowmap)
-    glGenerateTextureMipmap(get_ogl_handle(shadowmap.depth_texture))
+    return (
+        cam = Cam3D{Float32}(
+            pos=light_world_pos,
+            forward=light_dir,
+            projection = ortho_box
+        ),
+        view_proj=mat_view_proj,
+        world_to_texel=mat_world_to_texel
+    )
 end

@@ -1,19 +1,8 @@
-"""
+#=
 Defines the shader code common to all lighting models.
 
 Note: non-meshed versions of shaders are referred to as "preview" shaders.
-"""
-module LayerShaders
-
-using Bplus; @using_bplus
-using ..Rendering
-
-export SHADER_PREVIEW_VERT, SHADER_PREVIEW_GEOM,
-       SHADER_MESHED_VERT,
-       SHADER_FRAG_HEADER,
-       UNIFORM_WORLD_VOXEL_OFFSET, UNIFORM_WORLD_SCALE, UNIFORM_MATRIX_VIEWPROJ,
-       UNIFORM_ELAPSED_SECONDS,
-       UNIFORM_PREVIEW_VOXEL_COUNT, UNIFORM_PREVIEW_VOXEL_LAYER_IDX, UNIFORM_PREVIEW_VOXEL_TEX
+=#
 
 
 #####################################
@@ -40,7 +29,7 @@ function set_preview_uniforms(prog::Program,
                               n_voxels::v3u,
                               layer_idx::Int,
                               voxel_tex::Texture)
-    set_unifor(prog, "u_nVoxels", n_voxels)
+    set_uniform(prog, "u_nVoxels", n_voxels)
     set_uniform(prog, "u_voxelLayer", layer_idx)
     set_uniform(prog, "u_voxelGrid", voxel_tex)
 end
@@ -126,7 +115,7 @@ const FRAG_SHADER_INPUT_PACKING = """
         v.uv = uv;
         return v;
     }
-    void calcCustomOutputs(ProceessedVert vertex)
+    void calcCustomOutputs(ProcessedVert vertex)
     {
         #ifdef $FRAG_SHADER_TOKEN_CUSTOM_OUTPUTS_IMPL
             $FRAG_SHADER_TOKEN_CUSTOM_OUTPUTS_IMPL
@@ -406,8 +395,10 @@ const SHADER_PREVIEW_GEOM = """
 
 # Meshed vertex shader:
 const SHADER_MESHED_VERT = """
-    #line 3000
+    #line 2000
     $COMMON_DECLARATIONS
+    #line 3000
+    $SHADER_VERTEX_LAYOUT
     #line 4000
     $FRAG_SHADER_INPUT_PACKING
     #line 5000
@@ -416,7 +407,7 @@ const SHADER_MESHED_VERT = """
 
         fIn_packedFaceAxisDir = packFaceData(vIn.faceAxis, vIn.faceDir);
 
-        ProcessedVert vOut = processVertex(vIn.voxelIdx, vIn.faceAxis);
+        ProcessedVert vOut = processVertex(vec3(vIn.voxelIdx), vIn.faceAxis);
         fIn_worldPos = vOut.worldPos;
         fIn_voxelPos = vOut.voxelPos;
         fIn_uv = vOut.uv;
@@ -438,9 +429,3 @@ const SHADER_FRAG_HEADER = """
     $FRAG_SHADER_OUTPUTS
     #line 7000
 """
-
-###############################
-
-end # module
-
-using .LayerShaders

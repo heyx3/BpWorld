@@ -25,6 +25,7 @@ include("layer_render_models.jl")
 
 export Scene, RenderSettings, begin_scene_frame, end_scene_frame,
        Viewport, add_viewport, remove_viewport, render_viewport,
-       reset_scene
+       start_new_scene, reset_scene,
+       UniformBlock_Fog, UniformBlock_Sun, UniformBlock_Viewport
 
 end

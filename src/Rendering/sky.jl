@@ -20,9 +20,9 @@ const SKY_SHADER_VERT = """
     }
 """
 const SKY_SHADER_FRAG = """
-    $(LayerShaders.UTILS_INCLUDES)
-    $(LayerShaders.FRAG_SHADER_OUTPUTS)
-    uniform float $(LayerShaders.UNIFORM_ELAPSED_SECONDS);
+    $UTILS_INCLUDES
+    $FRAG_SHADER_OUTPUTS
+    uniform float $UNIFORM_ELAPSED_SECONDS;
     #line 0
 
     uniform float u_emissiveBrightness = 1.0;
@@ -53,7 +53,7 @@ Sky() = Sky(
 )
 
 function render_sky(sky::Sky, total_elapsed_seconds::Float32)
-    set_uniform(sky.shader, LayerShaders.UNIFORM_ELAPSED_SECONDS, total_elapsed_seconds)
+    set_uniform(sky.shader, UNIFORM_ELAPSED_SECONDS, total_elapsed_seconds)
     set_uniform(sky.shader, "u_emissiveBrightness", sky.sun_emissive_strength)
     render_mesh(service_BasicGraphics().screen_triangle, sky.shader)
 end

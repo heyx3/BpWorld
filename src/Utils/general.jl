@@ -39,19 +39,19 @@ Example:
 @close_gl_resources(x::MyAssets, values(x.texture_lookup), x.my_file_handles)
 ````
 "
-macro close_gl_resources(object, iterators...)
-    if !@capture(object, name_Symbol::type_)
-        error("Expected first argument to be in the form 'name::Type'. Got: ", object)
+macro close_gl_resources(decl, iterators...)
+    if !@capture(decl, name_Symbol::type_)
+        error("Expected first argument to be in the form 'name::Type'. Got: ", decl)
     end
-    object = esc(object)
+    decl = esc(decl)
     name = esc(name)
     type = esc(type)
     iterators = esc.(iterators)
     return :(
-        function Base.close($object)
+        function Base.close($decl)
             resources = Iterators.flatten(tuple(
                 Iterators.filter(field -> field isa $(Bplus.GL.AbstractResource),
-                                 getfield.(Ref($name), fieldnames($type))),
+                                 getfield.(Ref($name), fieldnames(typeof($name)))),
                 $(iterators...)
             ))
             for r in resources

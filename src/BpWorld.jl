@@ -32,7 +32,6 @@ using .Rendering
 include("gui_data.jl")
 include("assets.jl")
 include("world.jl")
-include("post_process.jl")
 include("gui.jl")
 
 function main()::Nothing
@@ -59,8 +58,7 @@ function main()::Nothing
 
             assets::Assets = Assets()
             world::World = World(LOOP.context.window, assets)
-            view::PostProcess = PostProcess(LOOP.context.window, assets, world)
-            gui::GUI = GUI(LOOP.context, assets, world, view, gui_nice_font)
+            gui::GUI = GUI(LOOP.context, assets, world, gui_nice_font)
 
             is_quit_confirming::Bool = false
 
@@ -78,20 +76,9 @@ function main()::Nothing
 
             gui_begin_debug_region(gui)
             update(world, LOOP.delta_seconds, LOOP.context.window)
-            update_buffers(assets, world.fog, world.sun, world.cam, world.target_tex_shadowmap,
-                # The light's view-projection matrix brings it into NDC space, -1 to +1.
-                # We need to take it one step further, into "texel" space, 0 to 1.
-                # This includes the Z value, since the depth texture normalizes depth to that range.
-                m_combine(
-                    world.sun_viewproj,
-                    m_scale(v4f(0.5, 0.5, 0.5, 1.0)),
-                    m4_translate(v3f(0.5, 0.5, 0.5))
-                )
-            )
-            render(world, assets)
-            render(view, LOOP.context.window, assets, world)
+            render(world, assets, true)
             gui_end_debug_region(gui)
-            gui_main_region(gui, assets, world, view)
+            gui_main_region(gui, assets, world)
 
             # Handle user input.
             if input_reload_shaders()
@@ -111,14 +98,13 @@ function main()::Nothing
                 is_quit_confirming = true
             end
 
-            # Force-show the window after precompilation is done.
+            # Put the window in front of the user after a few frames of settling.
             if LOOP.frame_idx == 10
                 GLFW.ShowWindow(LOOP.context.window)
             end
         end
 
         TEARDOWN = begin
-            close(view)
             close(world)
             close(assets)
         end

@@ -32,7 +32,7 @@ end
 
 
 const COMMON_MODEL_FRAG_SHADER_HEADER_FORWARD = """
-    $(LayerShaders.SHADER_FRAG_HEADER)
+    $SHADER_FRAG_HEADER
     #define PASS_FORWARD 1
 
     void finish(vec3 albedo, vec3 emissive,
@@ -55,9 +55,10 @@ const COMMON_MODEL_FRAG_SHADER_HEADER_FORWARD = """
         );
 
         //Apply shadows and GI.
-        surfaceColor = saturate(
+        surfaceColor = clamp(
             computeAmbient(inputs.worldPos, inputs.worldNormal, albedo) +
-            (localLight * computeShadows(inputs.worldPos))
+            (surfaceColor * computeShadows(inputs.worldPos)),
+            0, 1
         );
 
         //TODO: Apply emissive to surface color. How should it interact with fog?
@@ -76,7 +77,7 @@ const COMMON_MODEL_FRAG_SHADER_HEADER_FORWARD = """
 """
 
 const COMMON_MODEL_FRAG_SHADER_HEADER_DEPTH = """
-    $(LayerShaders.SHADER_FRAG_HEADER)
+    $SHADER_FRAG_HEADER
     #define PASS_DEPTH 1
 
     void finish() { }
@@ -175,82 +176,75 @@ function layer_renderer_execute(renderer::LayerRenderer_Common,
                                 pass_info::PassInfo)
     mat_viewproj = m_combine(cam_view_mat(viewport.cam),
                              cam_projection_mat(viewport.cam))
-    # Set some global render state.
-    let c = get_context()
-        c.cull_mode = FaceCullModes.off #TODO: Test that meshes and previews are both generated with correct orientation
-        c.blend_mode = (
-            rgb = make_blend_opaque(BlendStateRGB),
-            alpha = BlendStateAlpha(
-                BlendFactors.zero,
-                BlendFactors.one,
-                BlendOps.add
-            )
-        )
-        c.depth_write = true
-        if pass_info.type in (Pass.depth, Pass.shadow_map)
-            c.color_write_mask = zero(v4b)
-        end
-    end
+    with_culling(Bplus.GL.FaceCullModes.off) do #TODO: Test that meshes and previews are both generated with correct face orientation
+        with_depth_writes(true) do
+            with_color_writes((pass_info.type in (Pass.depth, Pass.shadow_map)) ?
+                                  zero(v4b) : one(v4b)) do
+                with_blending(make_blend_opaque(BlendStateRGB),
+                              BlendStateAlpha(BlendFactors.zero, BlendFactors.one, BlendOps.add)) do
+                    for layer_to_execute in layers
+                        # Decide which shader to use for this pass and layer.
+                        has_mesh::Bool = exists(layer_to_execute.finished_mesh)
+                        depth_only = (pass_info.type in (Pass.depth, Pass.shadow_map))
+                        prog::Program =
+                            if has_mesh
+                                if depth_only
+                                    layer_to_execute.custom_data.depth_meshed
+                                else
+                                    layer_to_execute.custom_data.forward_meshed
+                                end
+                            else
+                                if depth_only
+                                    layer_to_execute.custom_data.depth_preview
+                                else
+                                    layer_to_execute.custom_data.forward_preview
+                                end
+                            end
 
-    for layer_to_execute in layers
-        # Decide which shader to use for this pass and layer.
-        has_mesh::Bool = exists(layer_to_execute.finished_mesh)
-        depth_only = (pass_info.type in (Pass.depth, Pass.shadow_map))
-        prog::Program =
-            if has_mesh
-                if depth_only
-                    layer_to_execute.custom_data.depth_meshed
-                else
-                    layer_to_execute.custom_data.forward_meshed
-                end
-            else
-                if depth_only
-                    layer_to_execute.custom_data.depth_preview
-                else
-                    layer_to_execute.custom_data.forward_preview
+                        # Set global uniforms.
+                        set_universal_uniforms(prog,
+                                            zero(v3f), v3f(10, 10, 10),
+                                            pass_info.elapsed_seconds,
+                                            mat_viewproj)
+                        if isnothing(layer_to_execute.finished_mesh)
+                            set_preview_uniforms(prog,
+                                                convert(v3u, vsize(scene.voxels_array)),
+                                                layer_to_execute.idx,
+                                                scene.voxels)
+                            # Note that texture activation (and later deactivation) isn't handled by us,
+                            #    but by the scene.
+                        end
+
+                        # Set texture uniforms.
+                        for (tex_file, tex_data) in layer_to_execute.def.textures
+                            uniform_name = tex_data.code_name
+
+                            tex = get_cached_data!(scene.cache_textures, tex_file)
+                            tex_view = get_view(tex, tex_data.sampler)
+                            # Note that texture activation (and later deactivation) isn't handled by us,
+                            #    but by the scene.
+
+                            set_uniform(prog, uniform_name, tex_view)
+                        end
+
+                        # Draw.
+                        if has_mesh
+                            render_mesh(layer_to_execute.finished_mesh, prog)
+                        else
+                            render_mesh(
+                                service_BasicGraphics().empty_mesh, prog
+                                ;
+                                shape = PrimitiveTypes.point,
+                                indexed_params = nothing,
+                                elements = IntervalU(
+                                    min=1,
+                                    size=prod(vsize(scene.voxels_array))
+                                )
+                            )
+                        end
+                    end
                 end
             end
-
-        # Set global uniforms.
-        set_universal_uniforms(prog,
-                               zero(v3f), v3f(10, 10, 10),
-                               pass_info.elapsed_seconds,
-                               mat_viewproj)
-        if isnothing(layer_to_execute.finished_mesh)
-            set_preview_uniforms(prog,
-                                 convert(v3u, vsize(scene.voxels_array)),
-                                 layer_to_execute.idx,
-                                 scene.voxels)
-            # Note that texture activation (and later deactivation) isn't handled by us,
-            #    but by the scene.
-        end
-
-        # Set texture uniforms.
-        for (tex_file, tex_data) in layer_to_execute.def.textures
-            uniform_name = tex_data.code_name
-
-            tex = get_cached_data!(scene.cache_textures, tex_file)
-            tex_view = get_view(tex, tex_data.sampler)
-            # Note that texture activation (and later deactivation) isn't handled by us,
-            #    but by the scene.
-
-            set_uniform(prog, uniform_name, tex_view)
-        end
-
-        # Draw.
-        if has_mesh
-            render_mesh(layer_to_execute.finished_mesh, prog)
-        else
-            render_mesh(
-                service_BasicGraphics().empty_mesh, prog
-                ;
-                shape = PrimitiveTypes.point,
-                indexed_params = nothing,
-                elements = IntervalU(
-                    min=1,
-                    size=prod(vsize(scene.voxels_array))
-                )
-            )
         end
     end
 end

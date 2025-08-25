@@ -41,30 +41,37 @@ abstract type AbstractLayerDataLightingModel end
 
 # Use a name to distinguish each type of lighting model.
 const LIGHTING_MODEL_TYPE_KEY = :model
+const LIGHTING_MODEL_TYPE_KEY_STR = string(LIGHTING_MODEL_TYPE_KEY)
 lighting_model_serialized_name(T::Type{<:AbstractLayerDataLightingModel})::Symbol = error(T, " doesn't implement lighting_model_serialized_name()")
 lighting_model_type(::Val{SerializedName}) where {SerializedName} = error("Lighting model '", SerializedName, "' doesn't exist (names are case-sensitive!)")
 
 StructTypes.StructType(::Type{AbstractLayerDataLightingModel}) = StructTypes.CustomStruct()
-StructTypes.lowertype(::Type{<:AbstractLayerDataLightingModel}) = Dict{Symbol, Any}()
+StructTypes.lowertype(::Type{<:AbstractLayerDataLightingModel}) = Any
 StructTypes.lower(lm::AbstractLayerDataLightingModel) = Dict{Symbol, Any}(
     LIGHTING_MODEL_TYPE_KEY => lighting_model_serialized_name(typeof(lm)),
     (f => getproperty(lm, f) for f in propertynames(lm))...
 )
-function StructTypes.construct(::Type{AbstractLayerDataLightingModel}, data::Dict{Symbol, Any})
-    if !haskey(data, LIGHTING_MODEL_TYPE_KEY)
+function StructTypes.construct(::Type{AbstractLayerDataLightingModel}, data::Dict{String, Any})
+    if !haskey(data, LIGHTING_MODEL_TYPE_KEY_STR)
         error("Lighting model data is missing its '", LIGHTING_MODEL_TYPE_KEY, "' field")
     end
-    TConcrete = lighting_model_type(Val(data[LIGHTING_MODEL_TYPE_KEY]))
+    TConcrete = lighting_model_type(Val(Symbol(data[LIGHTING_MODEL_TYPE_KEY_STR])))
 
     # Delegate the actual creation to child types in case they want to customize it.
     data = copy(data)
-    delete!(data, LIGHTING_MODEL_TYPE_KEY)
+    delete!(data, LIGHTING_MODEL_TYPE_KEY_STR)
     return StructTypes.construct(TConcrete, data)
 end
+function StructTypes.construct(::Type{AbstractLayerDataLightingModel}, model_name::String)
+    TConcrete = lighting_model_type(Val(Symbol(model_name)))
+    return StructTypes.construct(TConcrete, Dict{String, Any}())
+end
+
+# Don't let the special behavior above prevent normal construction logic when deserializing a specific sub-type.
 function StructTypes.construct(T::Type{<:AbstractLayerDataLightingModel}, data_dict)
     # Warn the user about inavlid property names.
     for field in keys(data_dict)
-        if !(field in propertynames(T))
+        if !(Symbol(field) in propertynames(T))
             @warn "Unexpected field in $(lighting_model_serialized_name(T)): $field"
         end
     end
@@ -84,7 +91,7 @@ struct LayerDefinition
     # The vertex shader will always be "voxels/meshed.vert"
     frag_shader_path::AbstractString
 
-    # The lighting model this layer will use.
+    # The key for the lighting model this layer will use.
     lighting_model::AbstractLayerDataLightingModel
 
     # The textures used by this voxel asset.
