@@ -3,7 +3,7 @@ Base.@kwdef mutable struct GUI
     wnd::GLFW.Window
     service::Service_GUI
 
-    is_debug_window_open::Bool = false
+    is_debug_window_open::Bool = false # Always false in Release builds
 
     sun_dir_fallback_yaw::Ref{Float32} = Ref(zero(Float32))
     sun_color_state::Bool = false
@@ -26,15 +26,25 @@ function GUI(context::GL.Context, assets::Assets, world::World,
                nice_font=nice_font)
 end
 
-"""The "debug region" is for debugging data"""
+"Call before world logic"
 function gui_begin_debug_region(gui::GUI)
-    gui.is_debug_window_open = CImGui.Begin("Debugging")
+    @bpworld_debug begin
+        gui.is_debug_window_open = CImGui.Begin("Debugging")
+    end
 end
-function gui_end_debug_region(gui::GUI)
-    CImGui.End()
+"Call just after world logic, and before the usual GUI logic"
+function gui_end_debug_region(assets::Assets, world::World, gui::GUI)
+    @bpworld_debug begin
+        # Add a divider after any debug GUI stuff from the world logic.
+        CImGui.Separator()
+
+        #TODO: Display textures
+
+        CImGui.End()
+    end
 end
 
-"""The "main region" is for the normal, user-facing UI"""
+
 function gui_main_region(gui::GUI, assets::Assets, world::World)
     gui_with_font(gui.nice_font) do
         CImGui.SetNextWindowPos((5, 5))

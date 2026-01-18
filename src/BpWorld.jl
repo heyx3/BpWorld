@@ -107,6 +107,7 @@ function main()::Nothing
         TEARDOWN = begin
             close(world)
             close(assets)
+            close(gui)
         end
     end
 end
